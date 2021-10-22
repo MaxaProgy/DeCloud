@@ -1,10 +1,7 @@
 import hashlib
 import os
-from flask import Flask, request
-from flask_jsonrpc import JSONRPC
 from wallet import Wallet
-from utils import send_request
-from blockchain import blockchain
+from dctp import ClientDCTP
 import time
 from threading import Thread
 
@@ -14,16 +11,13 @@ SLICE_FOR_RANDOM_HASH = 10
 
 
 class Plot:
-    def __init__(self, ip_addr, port=5000, private_key=None):
+    def __init__(self, ip_addr_pool, port=5000, private_key=None):
         self._length_bin_data = None
         self._binary_data = None
-        self._ip_addr = ip_addr
+        self._ip_addr_pool = ip_addr_pool
         self._port = port
         self._all_hash_blocks = {}
-        if self._ip_addr == '127.0.0.1' and self._port == 5000:
-            self._all_ip_plot = []
-        else:
-            self._all_ip_plot = [['127.0.0.1', 5000]]
+
         if private_key is None:
             # Если не передаем в Plot private_key, то создаем его сами и получаем адрес
             # И инициализируем плот
@@ -41,6 +35,9 @@ class Plot:
             self._id_plot = wallet.address
             self._load_and_check_blocks()
 
+        self._client = ClientDCTP("client1")
+        self._client.connect(self._ip_addr_pool, self._port)
+
     def _load_and_check_blocks(self):
         # Загружаем все данные в Plot, проверяем их целостность.
         path_plot = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data', 'plots', self._id_plot)
@@ -53,8 +50,8 @@ class Plot:
                     hash_block = ''.join(directory_path[len(path_plot) + 1:].split('\\')) + file_name
                     file = open(os.path.join(directory_path, file_name), 'rb').read()
                     if hashlib.sha3_256(file).hexdigest()[-len(hash_block):] == hash_block and \
-                            (len(hash_block) == SLICE_FOR_RANDOM_HASH or (len(hash_block) == 64 and
-                                                                          blockchain.is_exist_block(hash_block))):
+                            (len(hash_block) == SLICE_FOR_RANDOM_HASH or (len(hash_block) == 64)):
+                        # and blockchain.is_exist_block(hash_block)
                         self._all_hash_blocks[hash_block] = len(file)
                     else:
                         self._delete_block(hash_block)
@@ -180,7 +177,7 @@ class Plot:
 
         # регестрируем транзакцию в блокчейне
         if name != "":
-            blockchain.new_transaction(name, hex_hash_list)
+            self._client.request('new_transaction', data={'name': name, 'hash_list': hex_hash_list})
 
         return {"success": "Ok."}
 
@@ -240,30 +237,8 @@ class Plot:
         return sum([self._all_hash_blocks[key] for key in self._all_hash_blocks.keys()])
 
     def start(self):
-        app = Flask(__name__)
-        jsonrpc = JSONRPC(app, '/api', enable_web_browsable_api=True)
-
-        @jsonrpc.method('plot.getallidreplica')
-        def get_all_id_replica(data: dict) -> list:
-            flag = True
-            for host, port in self._all_ip_plot:
-                if data['host'] == host and data["port"] == port:
-                    flag = False
-            if flag:
-                self._all_ip_plot.append([data['host'], data['port']])
-
-            return [hash for hash in self._all_hash_blocks.keys() if len(hash) == 64]
-
         def worker():
             while True:
-                for ip, port in self._all_ip_plot:
-                    response = send_request(url=f'http://{ip}:{port}/api',
-                                            method='plot.getallidreplica',
-                                            data=[{"host": self._ip_addr, "port": self._port}])
-                    print(self._ip_addr, self._port)
-                    print(self._all_ip_plot)
-                    print(response)
-
                 time.sleep(10)
 
         # run node
@@ -271,4 +246,3 @@ class Plot:
         job_node.start()
 
         print(f'Plot {self._id_plot} готов к работе')
-        app.run(host=self._ip_addr, port=self._port)

@@ -21,6 +21,3 @@ class Blockchain:
             if hash_block in self.transaction[name]:
                 return True
         return False
-
-
-blockchain = Blockchain()
