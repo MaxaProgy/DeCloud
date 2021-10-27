@@ -1,5 +1,5 @@
 from blockchain import Blockchain
-from dctp import ServerDCTP
+from dctp import ServerDCTP, send_status_code
 
 
 class Pool:
@@ -12,12 +12,15 @@ class Pool:
 
         @server.method('new_transaction')
         def new_transaction(data):
-            # Регистрируем транзакцию в блокчейне
             self._blockchain.new_transaction(data['name'], data['hash_list'])
 
+        @server.method('is_exist_block')
+        def is_exist_block(data):
+            if not self._blockchain.is_exist_block(data['hash_list']):
+                return send_status_code(100)
         server.start()
 
 
 if __name__ == "__main__":
-    pool = Pool(2222)
+    pool = Pool(8888)
     pool.run()

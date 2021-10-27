@@ -17,7 +17,8 @@ class Plot:
         self._ip_addr_pool = ip_addr_pool
         self._port = port
         self._all_hash_blocks = {}
-
+        self._client = ClientDCTP(private_key)
+        self._client.connect(self._ip_addr_pool, self._port)
         if private_key is None:
             # Если не передаем в Plot private_key, то создаем его сами и получаем адрес
             # И инициализируем плот
@@ -35,9 +36,6 @@ class Plot:
             self._id_plot = wallet.address
             self._load_and_check_blocks()
 
-        self._client = ClientDCTP("client1")
-        self._client.connect(self._ip_addr_pool, self._port)
-
     def _load_and_check_blocks(self):
         # Загружаем все данные в Plot, проверяем их целостность.
         path_plot = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data', 'plots', self._id_plot)
@@ -49,9 +47,10 @@ class Plot:
                     # в противном случаем удалем файл
                     hash_block = ''.join(directory_path[len(path_plot) + 1:].split('\\')) + file_name
                     file = open(os.path.join(directory_path, file_name), 'rb').read()
+                    response = self._client.request('is_exist_block', data={'name': None, 'hash_list': hash_block})
                     if hashlib.sha3_256(file).hexdigest()[-len(hash_block):] == hash_block and \
-                            (len(hash_block) == SLICE_FOR_RANDOM_HASH or (len(hash_block) == 64)):
-                        # and blockchain.is_exist_block(hash_block)
+                            (len(hash_block) == SLICE_FOR_RANDOM_HASH or (len(hash_block) == 64 and
+                                                                          response['status'] == 0)):
                         self._all_hash_blocks[hash_block] = len(file)
                     else:
                         self._delete_block(hash_block)
@@ -60,7 +59,7 @@ class Plot:
             size = self.get_size_plot()
             while COUNT_BLOCKS_IN_PLOT * SIZE_BLOCK - size >= SIZE_BLOCK:
                 self._create_init_block()
-                size -= SIZE_BLOCK
+                size += SIZE_BLOCK
 
             return {"success": "Ok."}
         else:
@@ -177,7 +176,10 @@ class Plot:
 
         # регестрируем транзакцию в блокчейне
         if name != "":
-            self._client.request('new_transaction', data={'name': name, 'hash_list': hex_hash_list})
+            response = self._client.request('new_transaction', data={'name': name, 'hash_list': hex_hash_list})
+            if response['status'] != 0:
+                print(response['status text'])
+                # Доработать коды ошибок
 
         return {"success": "Ok."}
 

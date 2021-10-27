@@ -1,64 +1,94 @@
 import socket
+import time
 from threading import Thread
 import json
+from wallet import Wallet
 from queue import Queue
 
-
-# Отправляем два запроса
-# 1 - размер 2
-# 2 - бинарные данные data
-def _send_request(sock, data):
-    request = json.dumps(data)
-    sock.send((len(request)).to_bytes(4, "big"))
-    sock.send(bytes(request, 'utf-8'))
+_DCTP_STATUS_CODE = {0: 'success',
+                     100: 'error'}
 
 
-# Принимаем запрос 1 и 2
-def _receive_request(sock):
-    length_response = int.from_bytes(sock.recv(4), 'big')
-    return json.loads(sock.recv(length_response).decode('utf-8'))
+def send_status_code(status):
+    return {'status': status, 'status text': _DCTP_STATUS_CODE[status]}
 
 
-class ClientDCTP(Thread):
-    def __init__(self, id_plot):
+class MixinDCTP:
+    def __init__(self):
+        pass
+
+    @staticmethod
+    # Принимаем запрос 1 и 2
+    def _receive_request(sock):
+        try:
+            length_response = int.from_bytes(sock.recv(4), 'big')
+        except:
+            return None
+        return json.loads(sock.recv(length_response).decode('utf-8'))
+
+    @staticmethod
+    def _send_request(sock, data=None):
+        # Отправляем два запроса
+        # 1 - размер 2
+        # 2 - бинарные данные data
+        request = json.dumps(data)
+        sock.send((len(request)).to_bytes(4, "big"))
+        sock.send(bytes(request, 'utf-8'))
+
+
+class ClientDCTP(MixinDCTP, Thread):
+    def __init__(self, private_key):
+        MixinDCTP.__init__(self)
         Thread.__init__(self)
         self._receiver_thread = None
-        self._id = id_plot
+        self._ip  = None
+        self._port = None
+        self._private_key = private_key
         self._socks = {}
 
     # Устанавливаем соединение
     def connect(self, ip, port):
-        for type_connect in ('server to client', 'client to server'):
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.connect((ip, port))
-            _send_request(sock, {'id': self._id, 'type': type_connect})
-            self._socks[type_connect] = sock
-        # Созданем поток и перенаправляем на отслушку последующего запроса
-        self._receiver_thread = Thread(target=self._receiver, args=(self._socks['server to client'],))
-        self._receiver_thread.start()
+        self._ip = ip
+        self._port = port
+        while True:
+            try:
+                for type_connect in ('server to client', 'client to server'):
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.connect((ip, port))
+                    self._send_request(sock, {'id': Wallet(self._private_key).address, 'type': type_connect})
+                    self._socks[type_connect] = sock
+            except:
+                print('Нет соединения.')
+                time.sleep(1)
+            else:
+                print('Соединение с сервером установлено')
+                # Созданем поток и перенаправляем на отслушку последующего запроса
+                self._receiver_thread = Thread(target=self._receiver)
+                self._receiver_thread.start()
+                break
 
     def request(self, method, data=None):
         # Подготавливаем данные к отправке запроса
-        if data:
-            _send_request(self._socks['client to server'], {'method': method, 'data': data})
-        else:
-            _send_request(self._socks['client to server'], {'method': method})
+        self._send_request(self._socks['client to server'], {'method': method, 'data': data})
+        return self._receive_request(self._socks['client to server'])
 
-    def _receiver(self, sock):
+    def _receiver(self):
         # Ждем пока придет запрос
         while True:
-            response = _receive_request(sock)
-            print('client', response)
+            response = self._receive_request(self._socks['server to client'])
+            if response is None:
+                print('Нет соединения.')
+                self.connect(self._ip, self._port)
+                break
 
 
-class ServerDCTP(Thread):
+class ServerDCTP(MixinDCTP, Thread):
     def __init__(self, port):
+        MixinDCTP.__init__(self)
         Thread.__init__(self)
         self._clients = {}
         self._dict_methods_call = {}
         self._port = port
-
-        self._queue = Queue()
 
     def run(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -69,24 +99,35 @@ class ServerDCTP(Thread):
         while True:
             try:
                 client, addr = sock.accept()
-                response = _receive_request(client)
-                receiver_thread = Thread(target=self._receiver, args=(client,))
-                receiver_thread.start()
-                # Храним ссылки на потоки, чтобы они не закрылись
-                self._clients[response['id']] = self._clients.get(response['id'], {})
-                self._clients[response['id']][response['type']] = {'client': client, 'thread': receiver_thread}
+                response = self._receive_request(client)
+                if response:
+                    if response["id"] not in self._clients.keys():
+                        print(f'Подключился клиент {response["id"]}')
+                    receiver_thread = Thread(target=self._receiver, args=(client, response['id']))
+                    receiver_thread.start()
+                    # Храним ссылки на потоки, чтобы они не закрылись
+                    self._clients[response['id']] = self._clients.get(response['id'], {})
+                    self._clients[response['id']][response['type']] = {'client': client, 'thread': receiver_thread}
 
             except KeyboardInterrupt:
                 sock.close()
 
-    def _receiver(self, sock):
+    def _receiver(self, sock, id_client):
         # Ждем пока придет запрос и вызываем соответствующий метод
         while True:
-            response = _receive_request(sock)
-            if response['method'] == 'new_transaction':
-                self._dict_methods_call['new_transaction'](response['data'])
-            else:
-                print('server', response)
+            response = self._receive_request(sock)
+            if response is None:
+                if id_client in self._clients.keys():
+                    print(f'Клиент {id_client} разорвал соединение')
+                    self._clients.pop(id_client)
+                break
+            response = self._dict_methods_call[response['method']](response['data'])
+            if response is None:
+                response = {}
+            if 'status' not in response.keys():
+                response['status'] = 0
+                response['status text'] = _DCTP_STATUS_CODE[0]
+            self._send_request(sock, response)
 
     def get_id_clients(self):
         # Возвращаем все id клиентов
@@ -94,10 +135,7 @@ class ServerDCTP(Thread):
 
     def request(self, id_client, method, data=None):
         # Подготавливаем данные к отправке запроса
-        if data:
-            _send_request(self._clients[id_client]['server to client']['client'], {'method': method, 'data': data})
-        else:
-            _send_request(self._clients[id_client]['server to client']['client'], {'method': method})
+        self._send_request(self._clients[id_client]['server to client']['client'], {'method': method, 'data': data})
 
     def method(self, name_method):
         # Декоратор. Храним ссылки на функции методов по их названиям
