@@ -14,13 +14,13 @@ class Pool:
         def new_transaction(data):
             self._blockchain.new_transaction(data['name'], data['hash_list'])
 
-        @server.method('is_exist_block')
-        def is_exist_block(data):
-            if not self._blockchain.is_exist_block(data['hash_list']):
+        @server.method('is_exist_replica')
+        def is_exist_replica(data):
+            if not self._blockchain.is_exist_replica(data['hash_list']):
                 return send_status_code(100)
         server.start()
 
 
 if __name__ == "__main__":
-    pool = Pool(8888)
+    pool = Pool(4444)
     pool.run()

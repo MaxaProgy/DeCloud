@@ -16,8 +16,8 @@ class Blockchain:
         with open(self._file_blockchain, 'wb') as f:
             pickle.dump(self.transaction, f)
 
-    def is_exist_block(self, hash_block):
+    def is_exist_replica(self, hash_replica):
         for name in self.transaction.keys():
-            if hash_block in self.transaction[name]:
+            if hash_replica in self.transaction[name]:
                 return True
         return False

@@ -3,7 +3,6 @@ import time
 from threading import Thread
 import json
 from wallet import Wallet
-from queue import Queue
 
 _DCTP_STATUS_CODE = {0: 'success',
                      100: 'error'}
@@ -37,11 +36,17 @@ class MixinDCTP:
 
 
 class ClientDCTP(MixinDCTP, Thread):
-    def __init__(self, private_key):
+    def __init__(self, private_key, type_connection='=='):
+        if type_connection == 'duplex':
+            self._type_connection = ['client to server', 'server to client']
+        elif type_connection in ['client to server', 'server to client']:
+            self._type_connection = [type_connection]
+        else:
+            raise TypeError('type_connection must be either client to server or server to client or duplex')
         MixinDCTP.__init__(self)
         Thread.__init__(self)
         self._receiver_thread = None
-        self._ip  = None
+        self._ip = None
         self._port = None
         self._private_key = private_key
         self._socks = {}
@@ -52,7 +57,7 @@ class ClientDCTP(MixinDCTP, Thread):
         self._port = port
         while True:
             try:
-                for type_connect in ('server to client', 'client to server'):
+                for type_connect in self._type_connection:
                     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     sock.connect((ip, port))
                     self._send_request(sock, {'id': Wallet(self._private_key).address, 'type': type_connect})

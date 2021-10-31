@@ -53,7 +53,7 @@ class Wallet:
 
     def save_private_key(self):
         # Сохраняем private_key в файл
-        path_file_key = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data', 'key')
+        path_file_key = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data', 'storages', 'key')
         if not os.path.exists(path_file_key):
             with open(path_file_key, 'w') as output:
                 output.write('')
