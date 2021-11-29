@@ -1,5 +1,4 @@
 import hashlib
-import json
 import os
 import time
 from threading import Thread
@@ -13,34 +12,25 @@ COUNT_REPLICAS_IN_CLOUD = 200
 SLICE_FOR_RANDOM_HASH = 10
 
 
-def get_path(directory, id_storage, *args):
-    if directory == 'cloud':
-        return os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data', 'cloud', id_storage, 'cash', *args)
-    elif directory == 'storage':
-        return os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data', 'storages', id_storage, *args)
-
-
 class BaseStorage:
-    def __init__(self, private_key=None):
-        self._directory = ''
-        self._all_hash_replicas = []
+    def __init__(self):
         self._size_storage = 0
-        if private_key is None:
-            # Создаем private_key сами
-            # и получаем address
-            wallet = Wallet()
-            wallet.save_private_key()
-            self._id_storage = wallet.address
-        else:
-            # Получаем address
-            wallet = Wallet(private_key)
-            self._id_storage = wallet.address
+        self._id_storage = None
+        self._all_hash_replicas = []
 
-    def _save_replica(self, replica):
-        hex_hash = hashlib.sha3_256(replica).hexdigest()[:SLICE_FOR_RANDOM_HASH]
+    @staticmethod
+    def get_path(*args):
+        pass
+
+    def _save_replica(self, replica, random_replica=False):
+        if random_replica:
+            hex_hash = hashlib.sha3_256(replica).hexdigest()[:SLICE_FOR_RANDOM_HASH]
+        else:
+            hex_hash = hashlib.sha3_256(replica).hexdigest()
+
         # находим путь для сохранения разбивая хэш на пары. Создаемм папки и сохраняем файл
-        path_to_dir_file = get_path(self._directory, self._id_storage,
-                                    *[hex_hash[i:i + 2] for i in range(0, len(hex_hash) - 2, 2)])
+        path_to_dir_file = self.get_path(self._id_storage,
+                                         *[hex_hash[i:i + 2] for i in range(0, len(hex_hash) - 2, 2)])
         path_to_file = os.path.join(path_to_dir_file, hex_hash[-2:])
 
         if not os.path.exists(path_to_dir_file):
@@ -58,17 +48,29 @@ class BaseStorage:
 
         return hex_hash
 
+    def _load_replica(self, hash):
+        # Находим файл по хэшу и возвращаем собержимое файла в виде реплики
+        path_to_dir_file = self.get_path(self._id_storage,
+                                         *[hash[i:i + 2] for i in range(0, len(hash) - 2, 2)])
+        path_to_file = os.path.join(path_to_dir_file, hash[-2:])
+        if os.path.exists(path_to_file):
+            with open(path_to_file, 'rb') as f:
+                data = f.read()
+            if hash != hashlib.sha3_256(data).hexdigest():
+                self._delete_replica(hash)
+        if not os.path.exists(path_to_file):
+            raise Exception('В будущем дописать, если файла нет то делать запрос в pool')
+        return data  # Возвращаем бинарный данные файла
+
     def _delete_replica(self, id_replica):
         # Удаляем файл и пустые папки с названием id_replica
         path_to_file = [id_replica[i:i + 2] for i in range(0, len(id_replica) - 2, 2)]
         # Удаляем файл с бинарными данными
-        os.remove(get_path(self._directory, self._id_storage,
-                           *path_to_file, id_replica[-2:]))
+        os.remove(self.get_path(self._id_storage, *path_to_file, id_replica[-2:]))
         try:
             # Удаляет пустые папки по пути к файлу
             for i in range(len(path_to_file), 0, -1):
-                path = get_path(self._directory,
-                                self._id_storage, *path_to_file[:i])
+                path = self.get_path(self._id_storage, *path_to_file[:i])
                 self._size_storage -= os.path.getsize(path)
                 os.rmdir(path)
 
@@ -81,129 +83,42 @@ class BaseStorage:
         return self._id_storage
 
 
-class FileFS:
-    def __init__(self, name, hash):
-        self._name = name
-        self._hash = hash
-
-    @property
-    def name(self):
-        return self._name
-
-    @property
-    def hash(self):
-        return self._hash
-
-    def is_file(self):
-        # Проверяем на файл ли это
-        return type(self) == FileFS
-
-
-class DirectoryFS:
-    def __init__(self, name, hash, parent):
-        self._name = name
-        self._hash = hash
-        self._children = []
-        self._parent = parent
-
-    @property
-    def name(self):
-        return self._name
-
-    @property
-    def hash(self):
-        return self._hash
-
-    def get_children(self):
-        return self._children
-
-    def add_child(self, child):
-        # Добавление вложеных в директорию директорий и папок
-        self._children.append(child)
-
-    def is_file(self):
-        # Проверяем на файл ли это
-        return type(self) == FileFS
-
-
-class CloudFS(BaseStorage):
-    # Файловая система
-    def __init__(self, private_key):
-        BaseStorage.__init__(self, private_key)
-        # Создание корневной - главной директории
-        self._root_dir = DirectoryFS(self._id_storage, None, None)
-        self._current_dir = self._root_dir
-
-    def make_dir(self, parent, name):
-        # Создание папки в файловой системе
-        hash = self._save_replica(bytes(json.dumps([parent.hash, name]), 'utf-8'))
-        new_dir = DirectoryFS(name, hash, self.current_dir)
-        self._current_dir.add_child(new_dir)
-        return new_dir
-
-    @property
-    def root_dir(self):
-        return self._root_dir
-
-    @property
-    def current_dir(self):
-        return self._current_dir
-
-    def new_file(self, parent, name, data):
-        # Создание нового файла в файловой системе
-        hashes = [self._save_replica(data[SIZE_REPLICA * count: SIZE_REPLICA * (count + 1)])
-                  for count in range(int(len(data) / SIZE_REPLICA) + (len(data) % SIZE_REPLICA > 0))]
-        hash_file = self._save_replica(bytes(json.dumps([parent.hash, name, hashes]), 'utf-8'))
-        file = FileFS(name, hash_file)
-        self._current_dir.add_child(file)
-
-    def change_dir(self, new_dir):
-        # Устанавливаем текущую директорию
-        self._current_dir = new_dir
-
-
-class ClientCloud:
-    def __init__(self, ip_addr_pool, port=5000, private_key=None):
-        self._cloud_fs = CloudFS(private_key)
-        self._directory = 'cloud'
-
-        if private_key is None:
-            os.mkdir(get_path(self._directory, self._cloud_fs.id_storage, 'cash'))
-
-    def load_from_file(self, file_name):
-        # Загрузка данных из файла
-        with open(file_name, "rb") as f:
-            data = f.read()
-
-        # Добавление файла в файловую систему
-        self._cloud_fs.new_file(self._cloud_fs.current_dir, file_name.split('/')[-1], data)
-        print(f'Файл {file_name} соханён.')
-
-
 class Storage(BaseStorage):
     def __init__(self, ip_addr_pool, port=5000, private_key=None):
-        BaseStorage.__init__(self, private_key)
+        BaseStorage.__init__(self)
         # self._client = ClientDCTP(private_key, type_connection='duplex')
         # self._client.connect(ip_addr_pool, port)
-        self._directory = 'storage'
+
         if private_key is None:
+            # Создаем private_key сами
+            # и получаем address
+            wallet = Wallet()
+            wallet.save_private_key_storage()
+            self._id_storage = wallet.address
             # Создаем начальные replicas
             for _ in range(COUNT_REPLICAS_IN_STORAGE):
                 self._create_random_init_replica()
         else:
+            # Получаем address
+            wallet = Wallet(private_key)
+            self._id_storage = wallet.address
             self._load_and_check_replicas()
             # Добавляем рандомные блоки, если какие-то файлы были удалены,
             # чтобы размер плота был = COUNT_REPLICAS_IN_STORAGE * SIZE_REPLICA
             while COUNT_REPLICAS_IN_STORAGE * SIZE_REPLICA - self._size_storage >= SIZE_REPLICA:
                 self._create_random_init_replica()
 
+    @staticmethod
+    def get_path(*args):
+        return os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data', 'storages', *args)
+
     def _create_random_init_replica(self):
         # Создаем 1 блок со случайными данными.
-        self._save_replica(os.urandom(SIZE_REPLICA))
+        self._save_replica(os.urandom(SIZE_REPLICA), random_replica=True)
 
     def _load_and_check_replicas(self):
         # Загружаем все данные в Storage, проверяем их целостность.
-        path_storage = get_path(self._directory, self._id_storage)
+        path_storage = self.get_path(self._id_storage)
         if os.path.exists(path_storage):
             for directory_path, directory_names, file_names in os.walk(path_storage):
                 for file_name in file_names:
