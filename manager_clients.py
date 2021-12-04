@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*
+
 from queue import Queue
 from time import sleep
 from datetime import datetime
@@ -7,7 +9,7 @@ import os
 from threading import Thread
 
 from storage import BaseStorage, SIZE_REPLICA
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, make_response
 from wallet import sign_verification, pub_to_address
 
 SESSION_TIME_LIFE = 24 * 60 * 60
@@ -138,24 +140,26 @@ class CloudFS(BaseStorage):
         self.save_state()
         return hash
 
-    def save_file(self, parent, name, data):
+    def save_file(self, parent, file_name, file_data):
         # Создание нового файла в файловой системе
-        hashes = [self._save_replica(data[SIZE_REPLICA * count: SIZE_REPLICA * (count + 1)])
-                  for count in range(int(len(data) / SIZE_REPLICA) + (len(data) % SIZE_REPLICA > 0))]
-        hash_file = self._save_replica(bytes(json.dumps([parent.hash, name, hashes]), 'utf-8'))
-        file = FileFS(name, hash_file)
+
+        len_data = len(file_data)
+
+        hashes = [self._save_replica(file_data[SIZE_REPLICA * count: SIZE_REPLICA * (count + 1)])
+                  for count in range(int(len_data / SIZE_REPLICA) + (len_data % SIZE_REPLICA > 0))]
+        hash_file = self._save_replica(bytes(json.dumps([parent.hash, file_name, hashes]), 'utf-8'))
+        file = FileFS(file_name, hash_file)
         parent.add_child(file)
         self.save_state()
         return hash_file
 
     def load_file(self, hash):
         hashes = json.loads(self._load_replica(hash))[2]
-        data_bin = b''.join([self._load_replica(hash) for hash in hashes])
-        return data_bin
+        return b''.join([self._load_replica(hash) for hash in hashes])
 
 
 class ClientCloud:
-    def __init__(self, port=6000):
+    def __init__(self, port=80):
         self._port = port
         self._session_keys = {}
         path = CloudFS.get_path('temp')
@@ -180,38 +184,46 @@ class ClientCloud:
 
     def run(self):
 
-
         app = Flask(__name__)
+
+        @app.route('/', methods=['GET'])
+        def main():
+            return "Привет, Decloud"
+
+        @app.route('/<string:id_decloud>', methods=['GET'])
+        def user_cloud(id_decloud):
+            client = CloudFS(id_decloud)
+            current_dir = client.find_object_on_hash(None)
+            return  " ".join([child.name for child in current_dir.get_children()])
 
         @app.route('/api/save_file', methods=['POST'])
         def save_file():
             # Добавляем файл в файловую сиситему
             data = dict(request.args)
-            if not all([key in data.keys() for key in ['id_decloud', 'file_hash', 'sign']]):
-                return jsonify({'error': 'required parameters are not specified: id_decloud, file_hash, sign'})
+            if not all([key in data.keys() for key in ['id_decloud', 'file_name', 'file_hash', 'sign']]):
+                return jsonify({'error': 'required parameters are not specified: id_decloud, file, sign'})
 
             sign = data.pop('sign')
             if not sign_verification(data=data, sign=sign, public_key=data['id_decloud']):
                 return jsonify({'error': 'signature is not valid'})
+
+            if data['file_hash'] != hashlib.sha3_256(request.data).hexdigest():
+                return jsonify({'error': 'hash file is not valid'})
 
             client = CloudFS(data['id_decloud'])
             current_dir = client.find_object_on_hash(None)
             if 'id_current_dir' in data.keys():
                 current_dir = client.find_object_on_hash(data['id_current_dir'])
 
-            name = request.files['file'].filename
-            if name in [child.name for child in current_dir.get_children() if child.is_file()]:
-                return jsonify({'error': f'the current object already has the given name {name}'})
+            if data['file_name'] in [child.name for child in current_dir.get_children() if child.is_file()]:
+                return jsonify({'error': f'the current object already has the given name {data["file_name"]}'})
 
-            path = client.get_path('temp', data['file_hash'])
-            request.files['file'].save(path)
-            hash_file = client.save_file(current_dir, name, open(path, 'rb').read())
-            os.remove(path)
+            hash_file = client.save_file(current_dir, data['file_name'], request.data)
             return jsonify(hash_file)
 
         @app.route('/api/make_dir', methods=['GET'])
         def make_dir():
-            data = dict(request.args)
+            data = request.json
             if not all([key in data.keys() for key in ['id_decloud', 'name', 'sign']]):
                 return jsonify({'error': 'required parameters are not specified: id_decloud, name, sign'})
 
@@ -219,15 +231,15 @@ class ClientCloud:
             if not sign_verification(data=data, sign=sign, public_key=data['id_decloud']):
                 return jsonify({'error': 'signature is not valid'})
 
-            if request.args['name'] == '..' or '/' in request.args['name']:
+            if data['name'] == '..' or '/' in data['name']:
                 return jsonify({'error': 'invalid characters in name'})
 
-            client = CloudFS(request.args['id_decloud'])
+            client = CloudFS(data['id_decloud'])
             current_dir = client.find_object_on_hash(None)
             if 'id_current_dir' in data.keys():
                 current_dir = client.find_object_on_hash(data['id_current_dir'])
 
-            name = request.args['name']
+            name = data['name']
             if name in [child.name for child in current_dir.get_children() if not child.is_file()]:
                 return jsonify({'error': f'the current object already has the given name {name}'})
 
@@ -248,12 +260,9 @@ class ClientCloud:
                 return jsonify({'error': f'id_object = {id_object} not found'})
 
             if cur_obj.is_file():
-                path = client.get_path('temp', cur_obj.hash)
-                with open(path, 'wb') as f:
-                    f.write(client.load_file(cur_obj.hash))
-                file_obj = send_file(path, as_attachment=True)
-                self.delete_file_queue.put(path)
-                return file_obj
+                response = make_response(client.load_file(cur_obj.hash))
+                response.headers.set('Content-Type', 'application/octet-stream')
+                return response
             else:
                 parent = cur_obj.parent
                 if parent:
@@ -272,5 +281,5 @@ class ClientCloud:
 
 
 if __name__ == '__main__':
-    client = ClientCloud(4545)
+    client = ClientCloud()
     client.run()
