@@ -9,7 +9,7 @@ import os
 from threading import Thread
 
 from storage import BaseStorage, SIZE_REPLICA
-from flask import Flask, request, jsonify, make_response
+from flask import Flask, request, jsonify, make_response, render_template, Response
 from wallet import sign_verification, pub_to_address
 
 SESSION_TIME_LIFE = 24 * 60 * 60
@@ -66,10 +66,10 @@ class DirectoryFS:
 
 class CloudFS(BaseStorage):
     # Файловая система
-    def __init__(self, public_key):
+    def __init__(self, address):
         BaseStorage.__init__(self)
 
-        self._id_storage = pub_to_address(public_key)
+        self._id_storage = address
         # Создание корневной - главной директории
 
         self._root_dir = DirectoryFS(self._id_storage, None, None)
@@ -159,7 +159,7 @@ class CloudFS(BaseStorage):
 
 
 class ClientCloud:
-    def __init__(self, port=80):
+    def __init__(self, port=7000):
         self._port = port
         self._session_keys = {}
         path = CloudFS.get_path('temp')
@@ -186,31 +186,18 @@ class ClientCloud:
 
         app = Flask(__name__)
 
-        @app.route('/', methods=['GET'])
-        def main():
-            return "Привет, Decloud"
-
-        @app.route('/<string:id_decloud>', methods=['GET'])
-        def user_cloud(id_decloud):
-            client = CloudFS(id_decloud)
-            current_dir = client.find_object_on_hash(None)
-            return  " ".join([child.name for child in current_dir.get_children()])
-
         @app.route('/api/save_file', methods=['POST'])
         def save_file():
             # Добавляем файл в файловую сиситему
             data = dict(request.args)
-            if not all([key in data.keys() for key in ['id_decloud', 'file_name', 'file_hash', 'sign']]):
-                return jsonify({'error': 'required parameters are not specified: id_decloud, file, sign'})
+            if not all([key in data.keys() for key in ['address', 'public_key', 'file_name', 'sign']]):
+                return jsonify({'error': 'required parameters are not specified: public_key, file, sign'})
 
             sign = data.pop('sign')
-            if not sign_verification(data=data, sign=sign, public_key=data['id_decloud']):
+            if not sign_verification(data=data, sign=sign, public_key=data['public_key']):
                 return jsonify({'error': 'signature is not valid'})
 
-            if data['file_hash'] != hashlib.sha3_256(request.data).hexdigest():
-                return jsonify({'error': 'hash file is not valid'})
-
-            client = CloudFS(data['id_decloud'])
+            client = CloudFS(data['address'])
             current_dir = client.find_object_on_hash(None)
             if 'id_current_dir' in data.keys():
                 current_dir = client.find_object_on_hash(data['id_current_dir'])
@@ -218,23 +205,32 @@ class ClientCloud:
             if data['file_name'] in [child.name for child in current_dir.get_children() if child.is_file()]:
                 return jsonify({'error': f'the current object already has the given name {data["file_name"]}'})
 
-            hash_file = client.save_file(current_dir, data['file_name'], request.data)
+            hashes = []
+            while True:
+                chunk = request.stream.read(SIZE_REPLICA)
+                if not chunk:
+                    break
+                hashes.append(client._save_replica(chunk))
+            hash_file = client._save_replica(bytes(json.dumps([current_dir.hash, data['file_name'], hashes]), 'utf-8'))
+            file = FileFS(data['file_name'], hash_file)
+            current_dir.add_child(file)
+            client.save_state()
             return jsonify(hash_file)
 
         @app.route('/api/make_dir', methods=['GET'])
         def make_dir():
             data = request.json
-            if not all([key in data.keys() for key in ['id_decloud', 'name', 'sign']]):
-                return jsonify({'error': 'required parameters are not specified: id_decloud, name, sign'})
+            if not all([key in data.keys() for key in ['address', 'public_key', 'name', 'sign']]):
+                return jsonify({'error': 'required parameters are not specified: public_key, name, sign'})
 
             sign = data.pop('sign')
-            if not sign_verification(data=data, sign=sign, public_key=data['id_decloud']):
+            if not sign_verification(data=data, sign=sign, public_key=data['public_key']):
                 return jsonify({'error': 'signature is not valid'})
 
             if data['name'] == '..' or '/' in data['name']:
                 return jsonify({'error': 'invalid characters in name'})
 
-            client = CloudFS(data['id_decloud'])
+            client = CloudFS(data['address'])
             current_dir = client.find_object_on_hash(None)
             if 'id_current_dir' in data.keys():
                 current_dir = client.find_object_on_hash(data['id_current_dir'])
@@ -247,12 +243,12 @@ class ClientCloud:
 
         @app.route('/api/get_object', methods=['GET'])
         def get_object():
-            if 'id_decloud' not in request.args.keys():
-                return jsonify({'error': 'the request has no key: id_decloud'})
-            client = CloudFS(request.args['id_decloud'])
+            if 'address' not in request.args.keys():
+                return jsonify({'error': 'the request has no key: address'})
+            client = CloudFS(request.args['address'])
 
             id_object = None
-            if 'id_object' in request.args.keys():
+            if ('id_object' in request.args.keys()) and (request.args['id_object'] != 'None'):
                 id_object = request.args['id_object']
 
             cur_obj = client.find_object_on_hash(id_object)
@@ -260,9 +256,11 @@ class ClientCloud:
                 return jsonify({'error': f'id_object = {id_object} not found'})
 
             if cur_obj.is_file():
-                response = make_response(client.load_file(cur_obj.hash))
-                response.headers.set('Content-Type', 'application/octet-stream')
-                return response
+                hashes = json.loads(client._load_replica(cur_obj.hash))[2]
+                def generate_chunk():
+                    for hash in hashes:
+                        yield client._load_replica(hash)
+                return Response(generate_chunk())
             else:
                 parent = cur_obj.parent
                 if parent:
@@ -271,6 +269,8 @@ class ClientCloud:
                     parent_hash = ''
 
                 dct_files_and_directories = {'parent': parent_hash, 'files': [], 'dirs': []}
+                if not cur_obj == client.root_dir:
+                    dct_files_and_directories['dirs'].append({'name': '..', 'id_object': cur_obj.parent.hash})
                 for child in cur_obj.get_children():
                     dct_files_and_directories[{FileFS: 'files', DirectoryFS: 'dirs'}[type(child)]] += \
                         [{'name': child.name, 'id_object': child.hash}]

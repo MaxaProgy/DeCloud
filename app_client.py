@@ -1,6 +1,4 @@
-import json
 import os
-from hashlib import sha3_256
 import sys
 
 from PyQt5.QtCore import Qt
@@ -9,9 +7,10 @@ from PyQt5.QtWidgets import QApplication, QFileDialog, QMainWindow, QDesktopWidg
     QPushButton, QListWidget, QInputDialog, QTableWidget, QTableWidgetItem, QAbstractItemView, QMessageBox
 from wallet import Wallet
 
+SIZE_REPLICA = 1024 ** 2
 
 class AppClient(QMainWindow):
-    def __init__(self, port=80):
+    def __init__(self, port=7000):
         super().__init__()
         self._port = port
         self.geometry = QDesktopWidget().availableGeometry()
@@ -63,6 +62,19 @@ class AppClient(QMainWindow):
         if private_keys:
             self.show_current_dir(self._clients[self.clients_lw.currentItem().text()]['id_current_dir'])
 
+    @staticmethod
+    def chunking(file_name):
+        size_file = os.stat(file_name).st_size
+        with open(file_name, 'rb') as f:
+            count = 0
+            while True:
+                data = f.read(SIZE_REPLICA)
+                if not data:
+                    break
+                count += 1
+                print((count * 100) // (size_file // SIZE_REPLICA + (size_file % SIZE_REPLICA != 0)), "%")
+                yield data
+
     def item_change(self, item):
         self.clients_lw.setCurrentItem(item)
         self.show_current_dir(self._clients[self.clients_lw.currentItem().text()]['id_current_dir'])
@@ -75,7 +87,8 @@ class AppClient(QMainWindow):
         if data is None:
             data = {}
         wallet = self.get_wallet()
-        data['id_decloud'] = wallet.public_key
+        data['public_key'] = wallet.public_key
+        data['address'] = wallet.address
         data['sign'] = wallet.sign(data)
 
         return data
@@ -105,19 +118,13 @@ class AppClient(QMainWindow):
             self.show_current_file(id_item)
 
     def show_current_dir(self, id_obj=None):
-        data = {'id_decloud': self.get_wallet().public_key}
+        data = {'address': self.get_wallet().address}
         if id_obj not in {None, ''}:
             data['id_object'] = id_obj
 
         response = requests.get(f'http://127.0.0.1:{self._port}/api/get_object', params=data).json()
         self.explorer.clear()
         self.explorer.setRowCount(0)
-
-        if not response['parent'] == '':
-            self.explorer.setRowCount(1)
-            self.explorer.setItem(0, 0, QTableWidgetItem('..'))
-            self.explorer.setItem(0, 1, QTableWidgetItem('Directory'))
-            self.explorer.setItem(0, 2, QTableWidgetItem(response['parent']))
 
         for type in ['dirs', 'files']:
             for obj in sorted(response[type], key=lambda k: k['name']):
@@ -128,17 +135,17 @@ class AppClient(QMainWindow):
                 self.explorer.setItem(row, 2, QTableWidgetItem(obj['id_object']))
 
     def show_current_file(self, id_obj):
-        data = {'id_decloud': self.get_wallet().public_key}
+        data = {'address': self.get_wallet().address}
         if id_obj not in {None, ''}:
             data['id_object'] = id_obj
 
         response = requests.get(f'http://127.0.0.1:{self._port}/api/get_object',
-                                                 params=data).content
-
+                                                 params=data)
         file_name = os.path.join(os.environ['TEMP'], self.explorer.item(self.explorer.currentRow(), 0).text())
         with open(file_name, 'wb') as f:
-            f.write(response)
-        os.system("start " + file_name)
+            [f.write(chunk) for chunk in response.iter_content(SIZE_REPLICA)]
+
+        os.startfile(file_name)
 
     def create_dir(self):
         if self.clients_lw.count() == 0:
@@ -167,23 +174,25 @@ class AppClient(QMainWindow):
         if self.clients_lw.count() == 0:
             QMessageBox.critical(self, "Ошибка", "Нет клиента", QMessageBox.Ok)
         else:
-            file_name = QFileDialog.getOpenFileName(self, "Select a file...", None, filter="All files (*)")[0]
-            if file_name != "":
-                print(f'Загружаем файл {file_name}')
+            path = QFileDialog.getOpenFileName(self, "Select a file...", None, filter="All files (*)")[0]
+            if path != "":
+                file_name = path.split('/')[-1]
+                for i in range(self.explorer.rowCount()):
+                    if self.explorer.item(i, 0).text() == file_name and self.explorer.item(i, 1).text() == 'File':
+                        QMessageBox.critical(self, "Ошибка", "Такое имя файла уже существует", QMessageBox.Ok)
+                        return
 
-                data = {'file_name': file_name.split('/')[-1]}
-                file = open(file_name, 'rb').read()
-                data['file_hash'] = sha3_256(file).hexdigest()
+                print(f'Загружаем файл {file_name}')
+                params = {'file_name': file_name}
 
                 id_current_dir = self._clients[self.clients_lw.currentItem().text()]['id_current_dir']
                 if id_current_dir:
-                    data['id_current_dir'] = id_current_dir
+                    params['id_current_dir'] = id_current_dir
 
-                data = self.signed_data_request(data)
+                params = self.signed_data_request(params)
 
-                response = requests.post(f'http://127.0.0.1:{self._port}/api/save_file',
-                                         headers={'Content-Type': 'application/octet-stream'},
-                                         params=data, data=file).json()
+                response = requests.post(f'http://127.0.0.1:{self._port}/api/save_file', params=params,
+                                         data=self.chunking(path)).json()
                 if 'error' in response:
                     QMessageBox.critical(self, "Error", response['error'], QMessageBox.Ok)
                 else:
