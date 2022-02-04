@@ -3,9 +3,10 @@ from dctp import ServerDCTP, send_status_code
 
 
 class Pool:
-    def __init__(self, port):
+    def __init__(self, private_key, port):
         self._blockchain = Blockchain()
         self._port = port
+        self._private_key = private_key
 
     def run(self):
         server = ServerDCTP(self._port)
@@ -19,8 +20,3 @@ class Pool:
             if not self._blockchain.is_exist_replica(data['hash_list']):
                 return send_status_code(100)
         server.start()
-
-
-if __name__ == "__main__":
-    pool = Pool(4444)
-    pool.run()

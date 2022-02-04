@@ -2,15 +2,13 @@
 
 from queue import Queue
 from time import sleep
-from datetime import datetime
-import hashlib
 import json
 import os
 from threading import Thread
 
 from storage import BaseStorage, SIZE_REPLICA
-from flask import Flask, request, jsonify, make_response, render_template, Response
-from wallet import sign_verification, pub_to_address
+from flask import Flask, request, jsonify, Response
+from wallet import sign_verification
 
 SESSION_TIME_LIFE = 24 * 60 * 60
 
@@ -257,9 +255,11 @@ class ClientCloud:
 
             if cur_obj.is_file():
                 hashes = json.loads(client._load_replica(cur_obj.hash))[2]
+
                 def generate_chunk():
                     for hash in hashes:
                         yield client._load_replica(hash)
+
                 return Response(generate_chunk())
             else:
                 parent = cur_obj.parent

@@ -60,7 +60,7 @@ class ClientDCTP(MixinDCTP, Thread):
                 for type_connect in self._type_connection:
                     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     sock.connect((ip, port))
-                    self._send_request(sock, {'id': Wallet(self._private_key).address, 'type': type_connect})
+                    self._send_request(sock, {'id': Wallet('storages', self._private_key).address, 'type': type_connect})
                     self._socks[type_connect] = sock
             except:
                 print('Нет соединения.')

@@ -11,6 +11,8 @@ COUNT_REPLICAS_IN_CLOUD = 200
 
 SLICE_FOR_RANDOM_HASH = 10
 
+storage_next_port = 5000
+
 
 class BaseStorage:
     def __init__(self):
@@ -84,29 +86,32 @@ class BaseStorage:
 
 
 class Storage(BaseStorage):
-    def __init__(self, ip_addr_pool, port=5000, private_key=None):
+    def __init__(self, private_key=None):
         BaseStorage.__init__(self)
         # self._client = ClientDCTP(private_key, type_connection='duplex')
         # self._client.connect(ip_addr_pool, port)
 
+        global storage_next_port
+        self._port = storage_next_port
+        storage_next_port += 1
+
         if private_key is None:
             # Создаем private_key сами
             # и получаем address
-            wallet = Wallet()
-            wallet.save_private_key_storage()
+            wallet = Wallet('storages')
+            wallet.save_private_key()
             self._id_storage = wallet.address
-            # Создаем начальные replicas
-            for _ in range(COUNT_REPLICAS_IN_STORAGE):
-                self._create_random_init_replica()
+            self._check_state = 'create'
         else:
             # Получаем address
-            wallet = Wallet(private_key)
+            wallet = Wallet('storages', private_key)
             self._id_storage = wallet.address
-            self._load_and_check_replicas()
-            # Добавляем рандомные блоки, если какие-то файлы были удалены,
-            # чтобы размер плота был = COUNT_REPLICAS_IN_STORAGE * SIZE_REPLICA
-            while COUNT_REPLICAS_IN_STORAGE * SIZE_REPLICA - self._size_storage >= SIZE_REPLICA:
-                self._create_random_init_replica()
+            self._check_state = 'load'
+        self._wallet = wallet
+
+    @property
+    def wallet(self):
+        return self._wallet
 
     @staticmethod
     def get_path(*args):
@@ -139,6 +144,18 @@ class Storage(BaseStorage):
 
     def start(self):
         def worker():
+            print(f'Подготовка к работе Storage {self._id_storage}')
+            if self._check_state == 'create':
+                # Создаем начальные replicas
+                for _ in range(COUNT_REPLICAS_IN_STORAGE):
+                    self._create_random_init_replica()
+            elif self._check_state == 'load':
+                self._load_and_check_replicas()
+                # Добавляем рандомные блоки, если какие-то файлы были удалены,
+                # чтобы размер плота был = COUNT_REPLICAS_IN_STORAGE * SIZE_REPLICA
+                while COUNT_REPLICAS_IN_STORAGE * SIZE_REPLICA - self._size_storage >= SIZE_REPLICA:
+                    self._create_random_init_replica()
+            print(f'Storage {self._id_storage} готов к работе')
             while True:
                 time.sleep(10)
 
@@ -146,4 +163,3 @@ class Storage(BaseStorage):
         job_node = Thread(target=worker)
         job_node.start()
 
-        print(f'Storage {self._id_storage} готов к работе')

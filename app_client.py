@@ -1,66 +1,204 @@
 import os
 import sys
+from multiprocessing import Process
 
 from PyQt5.QtCore import Qt
 import requests
+from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QApplication, QFileDialog, QMainWindow, QDesktopWidget, \
-    QPushButton, QListWidget, QInputDialog, QTableWidget, QTableWidgetItem, QAbstractItemView, QMessageBox
+    QPushButton, QListWidget, QInputDialog, QTableWidget, QTableWidgetItem, QAbstractItemView, QMessageBox, QTabWidget, \
+    QFrame, QHBoxLayout, QWidget, QMenu, QAction, QListWidgetItem, QHeaderView
+
+from pool import Pool
+from storage import Storage
 from wallet import Wallet
 
 SIZE_REPLICA = 1024 ** 2
+PATH_POOL_KEY = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data', 'pool', 'key')
+POOL_PORT = 2222
+
+
+def get_path(dirs, file):
+    path = os.path.join(os.path.dirname(os.path.realpath(__file__)), *dirs)
+    if not os.path.exists(path):
+        os.makedirs(path)
+    path = os.path.join(path, file)
+    if not os.path.exists(path):
+        with open(path, 'w') as f:
+            f.write('')
+    return path
+
 
 class AppClient(QMainWindow):
     def __init__(self, port=7000):
         super().__init__()
         self._port = port
-        self.geometry = QDesktopWidget().availableGeometry()
-        self.setGeometry(1000, 1000, 1000, 800)
-        self.move(500, 100)
+
+        self._clients = {}
+        self._storages = {}
+
+        self._current_address = None
+
         self.initUI()
 
     def initUI(self):
-        self.btn_send_file = QPushButton('Send file', self)
-        self.btn_send_file.move(50, 50)
-        self.btn_send_file.clicked.connect(self.send_file)
+        self.geometry = QDesktopWidget().availableGeometry()
+        self.setGeometry(1000, 1000, 1000, 800)
+        self.move(500, 100)
 
-        self.btn_create_client = QPushButton('Add new client', self)
-        self.btn_create_client.move(200, 50)
-        self.btn_create_client.clicked.connect(self.create_client)
+        tab_cloud = QFrame()
+        layout_tab_cloud = QHBoxLayout()
 
-        self.btn_cleate_dir = QPushButton('Create directory', self)
-        self.btn_cleate_dir.move(50, 100)
-        self.btn_cleate_dir.clicked.connect(self.create_dir)
+        with open(get_path(dirs=['data', 'cloud'], file='key'), 'r') as f:
+            for key in f.readlines():
+                wallet = Wallet('cloud', key[:-1])
+                if self._current_address is None:
+                    self._current_address = wallet.address
+                self._clients[wallet.address] = {'wallet': wallet, 'id_current_dir': None}
 
-        self.clients_lw = QListWidget(self)
-        self.clients_lw.move(50, 150)
-        self.clients_lw.resize(550, 250)
-        private_keys = [key[:-1] for key in open('data/cloud/key', 'r').readlines()]
-        self._clients = {}
-        for key in private_keys:
-            wallet = Wallet(key)
-            self._clients[wallet.address] = {'wallet': wallet, 'id_current_dir': None}
-        self.clients_lw.addItems(list(self._clients.keys()))
-        self.clients_lw.sortItems(Qt.AscendingOrder)
-        if self.clients_lw.count() > 0:
-            self.clients_lw.setCurrentItem(self.clients_lw.item(0))
-            # self.login()
-        self.clients_lw.itemClicked.connect(self.item_change)
-
-        self.explorer = QTableWidget(self)
-        self.explorer.move(620, 50)
-        self.explorer.resize(350, 700)
+        self.explorer = QTableWidget()
         labels = ['Name', 'Type', 'Id']
         self.explorer.setColumnCount(len(labels))
         self.explorer.setHorizontalHeaderLabels(labels)
         self.explorer.verticalHeader().hide()
         self.explorer.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.explorer.setShowGrid(False)
-        [self.explorer.setColumnWidth(i, 175) for i in range(2)]
+        self.explorer.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.explorer.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.explorer.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
         self.explorer.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.explorer.setSelectionMode(QAbstractItemView.SingleSelection)
         self.explorer.itemDoubleClicked.connect(self.open_object)
-        if private_keys:
-            self.show_current_dir(self._clients[self.clients_lw.currentItem().text()]['id_current_dir'])
+        if self._clients:
+            self.show_current_dir(None)
+
+        if os.path.exists(PATH_POOL_KEY):
+            self.start_pool()
+
+        layout_tab_cloud.addWidget(self.explorer)
+        tab_cloud.setLayout(layout_tab_cloud)
+
+        tab_pool = QFrame()
+        layout_tab_pool = QHBoxLayout()
+
+        tab_pool.setLayout(layout_tab_pool)
+
+        tab_storages = QFrame()
+        layout_tab_storages = QHBoxLayout()
+
+        self.list_storages = QTableWidget()
+        labels = ['Name', 'State']
+        self.list_storages.setColumnCount(len(labels))
+        self.list_storages.setHorizontalHeaderLabels(labels)
+        self.list_storages.verticalHeader().hide()
+        self.list_storages.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.list_storages.setShowGrid(False)
+        self.list_storages.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.list_storages.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.list_storages.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.list_storages.setSelectionMode(QAbstractItemView.SingleSelection)
+        with open(get_path(dirs=['data', 'storages'], file='key'), 'r') as f:
+            for key in f.readlines():
+                wallet = Wallet('storage', key[:-1])
+                address = wallet.address
+                self._storages[address] = {'wallet': wallet}
+                storage = Storage(key[:-1])
+                storage.start()
+                row = self.list_storages.rowCount()
+                self.list_storages.setRowCount(row + 1)
+                self.list_storages.setItem(row, 0, QTableWidgetItem(address))
+                if address in self._clients.keys():
+                    self.list_storages.item(row, 0).setForeground(QColor('green'))
+        self.list_storages.setSortingEnabled(True)
+        self.list_storages.sortByColumn(0, Qt.AscendingOrder)
+        self.list_storages.setCurrentCell(0, 0)
+        self.list_storages.currentCellChanged.connect(self.current_change_storage)
+
+        layout_tab_storages.addWidget(self.list_storages)
+        tab_storages.setLayout(layout_tab_storages)
+
+        self.tab = QTabWidget()
+        self.tab.addTab(tab_cloud, "Клиент")
+        self.tab.addTab(tab_pool, "Pool")
+        self.tab.addTab(tab_storages, "Storages")
+
+        self.tab.currentChanged.connect(self._createMenuBar)
+        self.setCentralWidget(self.tab)
+
+        self._createActions()
+        self._createMenuBar()
+
+        self.setWindowTitle("DeCloud")
+        if self._current_address:
+            self.setWindowTitle("DeCloud  —  " + self._current_address)
+
+    def _createActions(self):
+        self.newAction = QAction(self)
+
+        self.createStoragesAction = QAction("Create storage", self)
+        self.createStoragesAction.triggered.connect(self.create_storage)
+
+        self.createPoolAction = QAction("Create Pool", self)
+        self.createPoolAction.triggered.connect(self.connect_pool)
+
+        self.exitAction = QAction("Exit", self)
+        self.exitAction.triggered.connect(self.close)
+
+        self.createDirAction = QAction("Create directory", self)
+        self.createDirAction.triggered.connect(self.create_dir)
+
+        self.sendFileAction = QAction('Send file', self)
+        self.sendFileAction.triggered.connect(self.send_file)
+
+        self.createClientAction = QAction("Create client", self)
+        self.createClientAction.setEnabled(False)
+        self.createClientAction.triggered.connect(self.create_client)
+
+    def _createMenuBar(self):
+        menuBar = self.menuBar()
+        menuBar.clear()
+
+        fileMenu = QMenu("File", self)
+        menuBar.addMenu(fileMenu)
+
+        if self.tab.currentIndex() == 0:
+            storagesMenu = fileMenu.addMenu("Open Storages")
+            self.addressesAction = []
+            if not self._clients:
+                storagesMenu.setEnabled(False)
+
+            for name in list(self._clients.keys()):
+                self.addressesAction.append(QAction(name, self))
+                self.addressesAction[-1].triggered.connect(self.change_client_address)
+                storagesMenu.addAction(self.addressesAction[-1])
+
+                if self.addressesAction[-1].text() == self._current_address:
+                    self.addressesAction[-1].setCheckable(True)
+                    self.addressesAction[-1].setChecked(True)
+                else:
+                    self.addressesAction[-1].setCheckable(False)
+
+        elif self.tab.currentIndex() == 1:
+            fileMenu.addAction(self.createPoolAction)
+            if os.path.exists(PATH_POOL_KEY):
+                self.createPoolAction.setEnabled(False)
+
+        elif self.tab.currentIndex() == 2:
+            fileMenu.addAction(self.createStoragesAction)
+
+        fileMenu.addSeparator()
+        fileMenu.addAction(self.exitAction)
+
+        editMenu = menuBar.addMenu("Edit")
+        if self.tab.currentIndex() == 0:
+            editMenu.addAction(self.createDirAction)
+            editMenu.addAction(self.sendFileAction)
+        elif self.tab.currentIndex() == 1:
+            pass
+        elif self.tab.currentIndex() == 2:
+            editMenu.addAction(self.createClientAction)
+
+        helpMenu = menuBar.addMenu("Help")
 
     @staticmethod
     def chunking(file_name):
@@ -75,51 +213,100 @@ class AppClient(QMainWindow):
                 print((count * 100) // (size_file // SIZE_REPLICA + (size_file % SIZE_REPLICA != 0)), "%")
                 yield data
 
-    def item_change(self, item):
-        self.clients_lw.setCurrentItem(item)
-        self.show_current_dir(self._clients[self.clients_lw.currentItem().text()]['id_current_dir'])
+    @staticmethod
+    def start_process_pool(private_key, port):
+        pool = Pool(private_key, port)
+        pool.run()
 
-    def get_wallet(self):
-        wallet = self._clients[self.clients_lw.currentItem().text()]['wallet']
+    def start_pool(self):
+        with open(PATH_POOL_KEY) as f:
+            process_node = Process(target=self.start_process_pool, args=(f.readline(), POOL_PORT))
+        process_node.start()
+
+    def connect_pool(self):
+        wallet = Wallet('pool')
+        wallet.generate_private_key()
+        wallet.save_private_key()
+        self.createPoolAction.setEnabled(False)
+        self.start_pool()
+
+    def create_client(self):
+        address = self.list_storages.item(self.list_storages.currentRow(), 0).text()
+        with open(get_path(dirs=['data', 'storages'], file='key'), 'r') as f:
+            for key in f.readlines():
+                wallet = Wallet('storages', key[:-1])
+                if wallet.address == address:
+                    self._clients[address] = {'wallet': Wallet('cloud', key[:-1]), 'id_current_dir': None}
+                    self._clients[address]['wallet'].save_private_key()
+                    self.list_storages.item(self.list_storages.currentRow(), 0).setForeground(QColor('green'))
+                    self.setWindowTitle("DeCloud  —  " + address)
+                    self._current_address = address
+                    self.show_current_dir()
+                    self.tab.setCurrentIndex(0)
+                    self._createMenuBar()
+                    return
+
+    def create_storage(self):
+        # Создаем новый storage
+        storage = Storage()
+        address = storage.wallet.address
+        storage.start()
+        self._storages[address] = {'wallet': Wallet('storage')}
+        row = self.list_storages.rowCount()
+        self.list_storages.setRowCount(row + 1)
+        self.list_storages.setItem(row, 0, QTableWidgetItem(address))
+        self.list_storages.sortByColumn(0, Qt.AscendingOrder)
+        for i in range(row):
+            if self.list_storages.item(i, 0).text() == address:
+                self.list_storages.setCurrentCell(i, 0)
+                break
+
+    def current_change_storage(self, row):
+        self.createClientAction.setEnabled(self.list_storages.item(row, 0).text() not in self._clients.keys())
+
+    def change_client_address(self):
+        self._current_address = self.sender().text()
+        [addressAction.setCheckable(False) for addressAction in self.addressesAction]
+        self.sender().setCheckable(True)
+        self.sender().setChecked(True)
+        self.setWindowTitle("DeCloud  —  " + self._current_address)
+        self.show_current_dir()
+
+    def get_current_client_wallet(self):
+        # Получить кошелек
+        wallet = self._clients[self._current_address]['wallet']
         return wallet
 
     def signed_data_request(self, data=None):
+        # Формируем request и подписываем
         if data is None:
             data = {}
-        wallet = self.get_wallet()
+        wallet = self.get_current_client_wallet()
         data['public_key'] = wallet.public_key
         data['address'] = wallet.address
         data['sign'] = wallet.sign(data)
 
         return data
 
-    def create_client(self):
-        wallet = Wallet()
-        wallet.save_private_key_cloud()
-
-        address = wallet.address
-        self._clients[address] = {'wallet': wallet, 'id_current_dir': None}
-        self.clients_lw.addItem(address)
-
-        if self.clients_lw.count() == 1:
-            self.clients_lw.setCurrentItem(self.clients_lw.item(0))
-        else:
-            self.clients_lw.setCurrentItem(self.clients_lw.item(self.clients_lw.count() - 1))
-        self.show_current_dir()
-
     def open_object(self, item):
+        # Открытие объекта/переход в новую папку
+        # Обновляем изображение окна
         name_item = self.explorer.item(self.explorer.currentRow(), 0).text()
         type_item = self.explorer.item(self.explorer.currentRow(), 1).text()
         id_item = self.explorer.item(self.explorer.currentRow(), 2).text()
+
         if type_item == 'Directory':
-            self._clients[self.clients_lw.currentItem().text()]['id_current_dir'] = id_item
+            self._clients[self._current_address]['id_current_dir'] = id_item
             self.show_current_dir(id_item)
         else:
             self.show_current_file(id_item)
 
     def show_current_dir(self, id_obj=None):
-        data = {'address': self.get_wallet().address}
+        # Переходим в директорию
+        data = {'address': self.get_current_client_wallet().address}
+
         if id_obj not in {None, ''}:
+            # Передаем id объекта, если создаем новую директорию или открываем файл
             data['id_object'] = id_obj
 
         response = requests.get(f'http://127.0.0.1:{self._port}/api/get_object', params=data).json()
@@ -127,7 +314,7 @@ class AppClient(QMainWindow):
         self.explorer.setRowCount(0)
 
         for type in ['dirs', 'files']:
-            for obj in sorted(response[type], key=lambda k: k['name']):
+            for obj in sorted(response[type], key=lambda k: k['name']):  # Отображаем отсортированные директории и файлы
                 row = self.explorer.rowCount()
                 self.explorer.setRowCount(row + 1)
                 self.explorer.setItem(row, 0, QTableWidgetItem(obj['name']))
@@ -135,12 +322,15 @@ class AppClient(QMainWindow):
                 self.explorer.setItem(row, 2, QTableWidgetItem(obj['id_object']))
 
     def show_current_file(self, id_obj):
-        data = {'address': self.get_wallet().address}
+        # Открываем файл
+        data = {'address': self.get_current_client_wallet().address}
         if id_obj not in {None, ''}:
+            # Передаем id объекта, если создаем новую директорию или открываем файл
             data['id_object'] = id_obj
 
         response = requests.get(f'http://127.0.0.1:{self._port}/api/get_object',
-                                                 params=data)
+                                params=data)
+        # Сохраняем во временные файлы и открываем
         file_name = os.path.join(os.environ['TEMP'], self.explorer.item(self.explorer.currentRow(), 0).text())
         with open(file_name, 'wb') as f:
             [f.write(chunk) for chunk in response.iter_content(SIZE_REPLICA)]
@@ -148,7 +338,8 @@ class AppClient(QMainWindow):
         os.startfile(file_name)
 
     def create_dir(self):
-        if self.clients_lw.count() == 0:
+        # Создание новой директории
+        if self._current_address is None:
             QMessageBox.critical(self, "Ошибка", "Нет клиента", QMessageBox.Ok)
         else:
             text, ok = QInputDialog.getText(self, 'Input Dialog',
@@ -158,7 +349,7 @@ class AppClient(QMainWindow):
                     QMessageBox.critical(self, "Ошибка", "Не корректное имя файла", QMessageBox.Ok)
                 else:
                     data = {'name': text}
-                    id_current_dir = self._clients[self.clients_lw.currentItem().text()]['id_current_dir']
+                    id_current_dir = self._clients[self._current_address]['id_current_dir']
                     if id_current_dir:
                         data['id_current_dir'] = id_current_dir
                     data = self.signed_data_request(data)
@@ -171,7 +362,8 @@ class AppClient(QMainWindow):
                         self.show_current_dir(id_current_dir)
 
     def send_file(self):
-        if self.clients_lw.count() == 0:
+        # Загрузка нового файла
+        if self._current_address is None:
             QMessageBox.critical(self, "Ошибка", "Нет клиента", QMessageBox.Ok)
         else:
             path = QFileDialog.getOpenFileName(self, "Select a file...", None, filter="All files (*)")[0]
@@ -185,7 +377,7 @@ class AppClient(QMainWindow):
                 print(f'Загружаем файл {file_name}')
                 params = {'file_name': file_name}
 
-                id_current_dir = self._clients[self.clients_lw.currentItem().text()]['id_current_dir']
+                id_current_dir = self._clients[self._current_address]['id_current_dir']
                 if id_current_dir:
                     params['id_current_dir'] = id_current_dir
 
