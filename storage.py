@@ -11,8 +11,6 @@ COUNT_REPLICAS_IN_CLOUD = 200
 
 SLICE_FOR_RANDOM_HASH = 10
 
-storage_next_port = 5000
-
 
 class BaseStorage:
     def __init__(self):
@@ -86,14 +84,9 @@ class BaseStorage:
 
 
 class Storage(BaseStorage):
-    def __init__(self, private_key=None):
+    def __init__(self, process_client, private_key=None):
         BaseStorage.__init__(self)
-        # self._client = ClientDCTP(private_key, type_connection='duplex')
-        # self._client.connect(ip_addr_pool, port)
-
-        global storage_next_port
-        self._port = storage_next_port
-        storage_next_port += 1
+        self._process_client = process_client
 
         if private_key is None:
             # Создаем private_key сами
@@ -133,7 +126,7 @@ class Storage(BaseStorage):
                     hash_replica = ''.join(directory_path[len(path_storage) + 1:].split('\\')) + file_name
                     file = open(os.path.join(directory_path, file_name), 'rb').read()
                     if hashlib.sha3_256(file).hexdigest()[-len(hash_replica):] == hash_replica and \
-                            (len(hash_replica) == SLICE_FOR_RANDOM_HASH or (len(hash_replica) == 64)):
+                            (len(hash_replica) == SLICE_FOR_RANDOM_HASH or (len(hash_replica) == 64)) :
                         self._all_hash_replicas.append(hash_replica)
                     else:
                         self._delete_replica(hash_replica)
@@ -144,7 +137,14 @@ class Storage(BaseStorage):
 
     def start(self):
         def worker():
-            print(f'Подготовка к работе Storage {self._id_storage}')
+            if self._check_state == 'create':
+                print(f'Create storage {self.wallet.address} in {self._process_client._worker_name}')
+            elif self._check_state == 'load':
+                print(f'Load storage {self.wallet.address} in {self._process_client._worker_name}')
+
+            self._process_client.request(self._id_storage, 'current_state_storage',
+                                         {'state': 'preparing', 'id_storage': self._id_storage})
+
             if self._check_state == 'create':
                 # Создаем начальные replicas
                 for _ in range(COUNT_REPLICAS_IN_STORAGE):
@@ -155,7 +155,9 @@ class Storage(BaseStorage):
                 # чтобы размер плота был = COUNT_REPLICAS_IN_STORAGE * SIZE_REPLICA
                 while COUNT_REPLICAS_IN_STORAGE * SIZE_REPLICA - self._size_storage >= SIZE_REPLICA:
                     self._create_random_init_replica()
-            print(f'Storage {self._id_storage} готов к работе')
+
+            self._process_client.request(self._id_storage, 'current_state_storage',
+                                         {'state': 'ready', 'id_storage': self._id_storage})
             while True:
                 time.sleep(10)
 

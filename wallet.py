@@ -65,6 +65,10 @@ class Wallet:
         return pub_to_address(self.public_key)
 
     @property
+    def private_key(self):
+        return self.private_key
+
+    @property
     def public_key(self):
         # Создаем public_key через private_key
         private_key = int(self._private_key, 16).to_bytes(64, 'big')

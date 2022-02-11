@@ -1,14 +1,18 @@
 import os
 import sys
-from multiprocessing import Process
+import time
+from multiprocessing import Process, cpu_count
 
 from PyQt5.QtCore import Qt
 import requests
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QApplication, QFileDialog, QMainWindow, QDesktopWidget, \
     QPushButton, QListWidget, QInputDialog, QTableWidget, QTableWidgetItem, QAbstractItemView, QMessageBox, QTabWidget, \
-    QFrame, QHBoxLayout, QWidget, QMenu, QAction, QListWidgetItem, QHeaderView
+    QFrame, QHBoxLayout, QWidget, QMenu, QAction, QListWidgetItem, QHeaderView, QLabel
 
+from dctp1 import ServerDCTP, ClientDCTP
+from storage_manager import ManagerStorages
+from utils import get_path
 from pool import Pool
 from storage import Storage
 from wallet import Wallet
@@ -18,15 +22,6 @@ PATH_POOL_KEY = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data'
 POOL_PORT = 2222
 
 
-def get_path(dirs, file):
-    path = os.path.join(os.path.dirname(os.path.realpath(__file__)), *dirs)
-    if not os.path.exists(path):
-        os.makedirs(path)
-    path = os.path.join(path, file)
-    if not os.path.exists(path):
-        with open(path, 'w') as f:
-            f.write('')
-    return path
 
 
 class AppClient(QMainWindow):
@@ -35,11 +30,11 @@ class AppClient(QMainWindow):
         self._port = port
 
         self._clients = {}
-        self._storages = {}
-
+        self._address_pool = None
         self._current_address = None
 
         self.initUI()
+        self._manager = ManagerStorages(server)
 
     def initUI(self):
         self.geometry = QDesktopWidget().availableGeometry()
@@ -71,15 +66,15 @@ class AppClient(QMainWindow):
         self.explorer.itemDoubleClicked.connect(self.open_object)
         if self._clients:
             self.show_current_dir(None)
-
-        if os.path.exists(PATH_POOL_KEY):
-            self.start_pool()
+        self.start_pool()
 
         layout_tab_cloud.addWidget(self.explorer)
         tab_cloud.setLayout(layout_tab_cloud)
 
         tab_pool = QFrame()
+        self.label_status = QLabel()
         layout_tab_pool = QHBoxLayout()
+        layout_tab_pool.addWidget(self.label_status)
 
         tab_pool.setLayout(layout_tab_pool)
 
@@ -101,9 +96,6 @@ class AppClient(QMainWindow):
             for key in f.readlines():
                 wallet = Wallet('storage', key[:-1])
                 address = wallet.address
-                self._storages[address] = {'wallet': wallet}
-                storage = Storage(key[:-1])
-                storage.start()
                 row = self.list_storages.rowCount()
                 self.list_storages.setRowCount(row + 1)
                 self.list_storages.setItem(row, 0, QTableWidgetItem(address))
@@ -162,6 +154,7 @@ class AppClient(QMainWindow):
         menuBar.addMenu(fileMenu)
 
         if self.tab.currentIndex() == 0:
+            self.setWindowTitle("DeCloud  —  " + self._current_address)
             storagesMenu = fileMenu.addMenu("Open Storages")
             self.addressesAction = []
             if not self._clients:
@@ -180,10 +173,16 @@ class AppClient(QMainWindow):
 
         elif self.tab.currentIndex() == 1:
             fileMenu.addAction(self.createPoolAction)
-            if os.path.exists(PATH_POOL_KEY):
+
+            if self._address_pool:
+                self.setWindowTitle("DeCloud  —  " + self._address_pool)
                 self.createPoolAction.setEnabled(False)
+            else:
+                self.setWindowTitle("DeCloud")
 
         elif self.tab.currentIndex() == 2:
+            self.setWindowTitle("DeCloud  —  " + self._current_address)
+            self.list_storages.setFocus()
             fileMenu.addAction(self.createStoragesAction)
 
         fileMenu.addSeparator()
@@ -212,21 +211,27 @@ class AppClient(QMainWindow):
                 count += 1
                 print((count * 100) // (size_file // SIZE_REPLICA + (size_file % SIZE_REPLICA != 0)), "%")
                 yield data
-
     @staticmethod
-    def start_process_pool(private_key, port):
-        pool = Pool(private_key, port)
-        pool.run()
+    def start_process_pool(private_key):
+        try:
+            pool = Pool(private_key)
+        except Exception as e:
+            print(e)
 
     def start_pool(self):
-        with open(PATH_POOL_KEY) as f:
-            process_node = Process(target=self.start_process_pool, args=(f.readline(), POOL_PORT))
-        process_node.start()
+        if os.path.exists(PATH_POOL_KEY):
+            with open(PATH_POOL_KEY) as f:
+                private_key = f.readline()
+                process_node = Process(target=self.start_process_pool, args=[private_key])
+                process_node.start()
+                self._address_pool = Wallet("pool", private_key).address
+                print(f'Start POOL {self._address_pool}')
 
     def connect_pool(self):
         wallet = Wallet('pool')
         wallet.generate_private_key()
         wallet.save_private_key()
+        print(f'Create POOL {wallet.address}')
         self.createPoolAction.setEnabled(False)
         self.start_pool()
 
@@ -248,6 +253,9 @@ class AppClient(QMainWindow):
 
     def create_storage(self):
         # Создаем новый storage
+        self._manager.add_storage()
+
+        """
         storage = Storage()
         address = storage.wallet.address
         storage.start()
@@ -259,7 +267,7 @@ class AppClient(QMainWindow):
         for i in range(row):
             if self.list_storages.item(i, 0).text() == address:
                 self.list_storages.setCurrentCell(i, 0)
-                break
+                break"""
 
     def current_change_storage(self, row):
         self.createClientAction.setEnabled(self.list_storages.item(row, 0).text() not in self._clients.keys())
@@ -391,8 +399,57 @@ class AppClient(QMainWindow):
                     self.show_current_dir(id_current_dir)
 
 
+def worker_process(cpu, port):
+    worker = ClientDCTP('WORKER ' + str(cpu), '127.0.0.1', port)
+
+    @worker.method('add_storage')
+    def add_storage(data):
+        storage = Storage(worker, data['private_key'])
+        storage.start()
+
+    worker.start()
+
+
 if __name__ == '__main__':
+
+    server = ServerDCTP()
+
+
+    @server.method('current_state_storage')
+    def current_state_storage(data):
+        while True:
+            try:
+                client_manager
+                break
+            except:
+                time.sleep(0.1)
+
+        exist_storage = True
+        for i in range(client_manager.list_storages.rowCount()):
+            if client_manager.list_storages.item(i, 0).text() == data['id_storage']:
+                client_manager.list_storages.setItem(i, 1, QTableWidgetItem(data['state']))
+                client_manager.list_storages.hide()
+                client_manager.list_storages.show()
+                exist_storage = False
+                break
+        if exist_storage:
+            row = client_manager.list_storages.rowCount()
+            client_manager.list_storages.setRowCount(row + 1)
+            client_manager.list_storages.setSortingEnabled(False)
+            client_manager.list_storages.setItem(row, 0, QTableWidgetItem(data['id_storage']))
+            client_manager.list_storages.setItem(row, 1, QTableWidgetItem(data['state']))
+            client_manager.list_storages.setCurrentCell(row, 0)
+            client_manager.list_storages.setSortingEnabled(True)
+        print(f'Storage {data["id_storage"]} {data["state"]}')
+
+
+    server.start()
+
+    for cpu in range(cpu_count()):
+        t = Process(target=worker_process, args=[cpu, server.current_port])
+        t.start()
+    time.sleep(6)
     app = QApplication(sys.argv)
-    client_manger = AppClient()
-    client_manger.show()
+    client_manager = AppClient()
+    client_manager.show()
     sys.exit(app.exec_())

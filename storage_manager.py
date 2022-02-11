@@ -1,27 +1,21 @@
-from storage import Storage
-from multiprocessing import Process
-import time
-from wallet import Wallet
+from multiprocessing import cpu_count
+from utils import get_path
 
 
-def start_storage(ip_addr_pool, port_pool, private_key):
-    storage = Storage(ip_addr_pool, port_pool, private_key)
-    address = Wallet(private_key).address
-    print('Запускаем Storage: ', address)
-    storage.start()
+class ManagerStorages():
+    def __init__(self, server):
+        self._cpu_count = cpu_count()
+        self._count_storages = 0
+        self._server = server
+        self.load_storages()
+
+    def load_storages(self):
+        with open(get_path(dirs=['data', 'storages'], file='key'), 'r') as f:
+            for key in f.readlines():
+                self.add_storage(key[:-1])
+
+    def add_storage(self, private_key=None):
+        self._count_storages += 1
+        self._server.request(f'WORKER {self._count_storages % self._cpu_count}', 'add_storage', data={'private_key': private_key})
 
 
-if __name__ == '__main__':
-    with open('data/storages/key', 'r') as f:
-        private_keys = f.read().splitlines()
-    if private_keys:
-        for private_key in private_keys:
-            print('Инициализируем Storage: ', Wallet(private_key).address)
-            process_storage = Process(target=start_storage, args=("127.0.0.1", 3333, private_key))
-            process_storage.start()
-    else:
-        process_storage = Process(target=start_storage, args=("127.0.0.1", 3333, None))
-        process_storage.start()
-
-    while True:
-        time.sleep(1)

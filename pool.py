@@ -1,15 +1,16 @@
 from blockchain import Blockchain
-from dctp import ServerDCTP, send_status_code
+from dctp1 import ServerDCTP, send_status_code
 
+POOL_PORT = 9000
 
 class Pool:
-    def __init__(self, private_key, port):
+    def __init__(self, private_key):
         self._blockchain = Blockchain()
-        self._port = port
         self._private_key = private_key
+        self.run()
 
     def run(self):
-        server = ServerDCTP(self._port)
+        server = ServerDCTP(POOL_PORT)
 
         @server.method('new_transaction')
         def new_transaction(data):
