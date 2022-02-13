@@ -61,7 +61,7 @@ class ClientDCTP(Thread):
 
                     self._socks[type_connect] = sock
             except:
-                print('Нет соединения.')
+                print(f'Нет соединения {self._worker_name}.')
                 time.sleep(1)
             else:
                 print(f'Connect with {self._worker_name} ready')
