@@ -1,7 +1,7 @@
 import os
 
 
-def get_path(dirs, file):
+def get_path(dirs, file=None):
     path = os.path.join(os.path.dirname(os.path.realpath(__file__)), *dirs)
     if not os.path.exists(path):
         os.makedirs(path)

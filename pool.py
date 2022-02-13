@@ -1,7 +1,8 @@
 from blockchain import Blockchain
 from dctp1 import ServerDCTP, send_status_code
 
-POOL_PORT = 9000
+POOL_PORT = 8000
+
 
 class Pool:
     def __init__(self, private_key):

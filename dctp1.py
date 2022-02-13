@@ -1,9 +1,7 @@
-import os
 import socket
 import time
 from threading import Thread, RLock
 import json
-from wallet import Wallet
 
 _DCTP_STATUS_CODE = {0: 'success',
                      100: 'error'}
@@ -71,13 +69,13 @@ class ClientDCTP(Thread):
                     receiver_thread.start()
                 break
 
-    def request(self, id_storage, method, data=None):
+    def request(self, id_fog_node, method, data=None):
         # Подготавливаем данные к отправке запроса
 
         request = json.dumps({'method': method, 'data': data})
 
-        self._socks['client to server'].send(bytes(id_storage, 'utf-8') + len(request).to_bytes(4, "big"))
-        self._socks['client to server'].send(bytes(id_storage, 'utf-8') + bytes(request, 'utf-8'))
+        self._socks['client to server'].send(bytes(id_fog_node, 'utf-8') + len(request).to_bytes(4, "big"))
+        self._socks['client to server'].send(bytes(id_fog_node, 'utf-8') + bytes(request, 'utf-8'))
 
         return self._receive_request(self, self._socks['client to server'])
 

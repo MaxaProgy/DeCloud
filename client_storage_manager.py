@@ -6,14 +6,14 @@ import json
 import os
 from threading import Thread
 
-from storage import BaseStorage, SIZE_REPLICA
+from fog_node import BaseFogNode, SIZE_REPLICA
 from flask import Flask, request, jsonify, Response
 from wallet import sign_verification
 
 SESSION_TIME_LIFE = 24 * 60 * 60
 
 
-class FileFS:
+class FileExplorer:
     def __init__(self, name, hash):
         self._name = name
         self._hash = hash
@@ -28,10 +28,10 @@ class FileFS:
 
     def is_file(self):
         # Проверяем на файл ли это
-        return type(self) == FileFS
+        return type(self) == FileExplorer
 
 
-class DirectoryFS:
+class DirectoryExplorer:
     def __init__(self, name, hash, parent):
         self._name = name
         self._hash = hash
@@ -59,18 +59,18 @@ class DirectoryFS:
 
     def is_file(self):
         # Проверяем на файл ли это
-        return type(self) == FileFS
+        return type(self) == FileExplorer
 
 
-class CloudFS(BaseStorage):
+class ClientStorageExplorer(BaseFogNode):
     # Файловая система
     def __init__(self, address):
-        BaseStorage.__init__(self)
+        BaseFogNode.__init__(self)
 
-        self._id_storage = address
+        self._id_fog_node = address
         # Создание корневной - главной директории
 
-        self._root_dir = DirectoryFS(self._id_storage, None, None)
+        self._root_dir = DirectoryExplorer(self._id_fog_node, None, None)
 
         self._load_state()
 
@@ -79,38 +79,38 @@ class CloudFS(BaseStorage):
         return self._root_dir
 
     def _load_state(self):
-        path = self.get_path(self._id_storage, 'state.json')
+        path = self.get_path(self._id_fog_node, 'state.json')
         if os.path.exists(path):
             with open(path, 'r') as f:
-                hashes_fs = json.loads(f.read())
-            for hash in hashes_fs:  # Проходим по всем
+                hashes_explorer = json.loads(f.read())
+            for hash in hashes_explorer:  # Проходим по всем
                 info_params_obj = json.loads(self._load_replica(hash))  # Формируем json из бинарных данных файла
                 if len(info_params_obj) == 3:  # Если файл
-                    file = FileFS(info_params_obj[1], hash)  # Создаем файл
+                    file = FileExplorer(info_params_obj[1], hash)  # Создаем файл
                     # Находим папку и добавляем к ней в качестве child - файл
                     self.find_object_on_hash(info_params_obj[0]).add_child(file)
                 else:  # если папка
                     parent = self.find_object_on_hash(info_params_obj[0])  # Находим папку
                     # Добавляем к ней в качестве child - файл
-                    child = DirectoryFS(info_params_obj[1], hash, parent)
+                    child = DirectoryExplorer(info_params_obj[1], hash, parent)
                     parent.add_child(child)
 
     def save_state(self):
         from queue import Queue
         task_queue = Queue()
         task_queue.put(self.root_dir)  # Очаредь всех вершин графа
-        hashes_fs = [self.root_dir.hash]  # Список хэшей-путей к файлам
+        hashes_explorer = [self.root_dir.hash]  # Список хэшей-путей к файлам
         while not task_queue.empty():
             current_obj = task_queue.get()  # Забираем объект
             if not current_obj.is_file():
                 # Если файл, то добавляем всех его children в очаредь вершин графа и
                 # сохраняем в спиок хэши-пути к файлам
                 [task_queue.put(child) for child in current_obj.get_children()]
-                hashes_fs += [child.hash for child in current_obj.get_children()]
+                hashes_explorer += [child.hash for child in current_obj.get_children()]
 
-        with open(self.get_path(self.id_storage, 'state.json'), 'w') as f:
+        with open(self.get_path(self.id_fog_node, 'state.json'), 'w') as f:
             # Сохраняем в файл все хэши к файлам
-            f.write(json.dumps(hashes_fs[1:]))  # первый в списке - текущая папка
+            f.write(json.dumps(hashes_explorer[1:]))  # первый в списке - текущая папка
 
     def find_object_on_hash(self, hash):
         # Находим папку по хэшу
@@ -128,12 +128,12 @@ class CloudFS(BaseStorage):
 
     @staticmethod
     def get_path(*args):
-        return os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data', 'cloud', *args)
+        return os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data', 'client_storage', *args)
 
     def make_dir(self, parent, name):
         # Создание папки в файловой системе
         hash = self._save_replica(bytes(json.dumps([parent.hash, name]), 'utf-8'))
-        new_dir = DirectoryFS(name, hash, parent)
+        new_dir = DirectoryExplorer(name, hash, parent)
         parent.add_child(new_dir)
         self.save_state()
         return hash
@@ -146,7 +146,7 @@ class CloudFS(BaseStorage):
         hashes = [self._save_replica(file_data[SIZE_REPLICA * count: SIZE_REPLICA * (count + 1)])
                   for count in range(int(len_data / SIZE_REPLICA) + (len_data % SIZE_REPLICA > 0))]
         hash_file = self._save_replica(bytes(json.dumps([parent.hash, file_name, hashes]), 'utf-8'))
-        file = FileFS(file_name, hash_file)
+        file = FileExplorer(file_name, hash_file)
         parent.add_child(file)
         self.save_state()
         return hash_file
@@ -156,13 +156,13 @@ class CloudFS(BaseStorage):
         return b''.join([self._load_replica(hash) for hash in hashes])
 
 
-class ClientCloud:
+class DispatcherClientStorage:
     def __init__(self, port=7000):
         self._port = port
         self._session_keys = {}
-        path = CloudFS.get_path('temp')
+        path = ClientStorageExplorer.get_path('temp')
         if not os.path.exists(path):
-            os.mkdir(path)
+            os.makedirs(path)
 
         self.delete_file_queue = Queue()
         self.delete_file_thread = Thread(target=self.delete_file)
@@ -195,7 +195,7 @@ class ClientCloud:
             if not sign_verification(data=data, sign=sign, public_key=data['public_key']):
                 return jsonify({'error': 'signature is not valid'})
 
-            client = CloudFS(data['address'])
+            client = ClientStorageExplorer(data['address'])
             current_dir = client.find_object_on_hash(None)
             if 'id_current_dir' in data.keys():
                 current_dir = client.find_object_on_hash(data['id_current_dir'])
@@ -210,7 +210,7 @@ class ClientCloud:
                     break
                 hashes.append(client._save_replica(chunk))
             hash_file = client._save_replica(bytes(json.dumps([current_dir.hash, data['file_name'], hashes]), 'utf-8'))
-            file = FileFS(data['file_name'], hash_file)
+            file = FileExplorer(data['file_name'], hash_file)
             current_dir.add_child(file)
             client.save_state()
             return jsonify(hash_file)
@@ -228,7 +228,7 @@ class ClientCloud:
             if data['name'] == '..' or '/' in data['name']:
                 return jsonify({'error': 'invalid characters in name'})
 
-            client = CloudFS(data['address'])
+            client = ClientStorageExplorer(data['address'])
             current_dir = client.find_object_on_hash(None)
             if 'id_current_dir' in data.keys():
                 current_dir = client.find_object_on_hash(data['id_current_dir'])
@@ -243,7 +243,7 @@ class ClientCloud:
         def get_object():
             if 'address' not in request.args.keys():
                 return jsonify({'error': 'the request has no key: address'})
-            client = CloudFS(request.args['address'])
+            client = ClientStorageExplorer(request.args['address'])
 
             id_object = None
             if ('id_object' in request.args.keys()) and (request.args['id_object'] != 'None'):
@@ -272,7 +272,7 @@ class ClientCloud:
                 if not cur_obj == client.root_dir:
                     dct_files_and_directories['dirs'].append({'name': '..', 'id_object': cur_obj.parent.hash})
                 for child in cur_obj.get_children():
-                    dct_files_and_directories[{FileFS: 'files', DirectoryFS: 'dirs'}[type(child)]] += \
+                    dct_files_and_directories[{FileExplorer: 'files', DirectoryExplorer: 'dirs'}[type(child)]] += \
                         [{'name': child.name, 'id_object': child.hash}]
 
                 return jsonify(dct_files_and_directories)
@@ -281,5 +281,5 @@ class ClientCloud:
 
 
 if __name__ == '__main__':
-    client = ClientCloud()
+    client = DispatcherClientStorage()
     client.run()
