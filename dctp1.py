@@ -3,6 +3,7 @@ import time
 from threading import Thread, RLock
 import json
 
+
 _DCTP_STATUS_CODE = {0: 'success',
                      100: 'error'}
 
@@ -27,7 +28,6 @@ class ClientDCTP(Thread):
         self._worker_name = worker_name
         self._dict_methods_call = {}
         self._socks = {}
-        self.connect()
 
     @staticmethod
     # Принимаем запрос 1 и 2
@@ -49,7 +49,7 @@ class ClientDCTP(Thread):
         sock.send(bytes(request, 'utf-8'))
 
     # Устанавливаем соединение
-    def connect(self):
+    def run(self):
         while True:
             try:
                 for type_connect in self._type_connection:
@@ -67,7 +67,8 @@ class ClientDCTP(Thread):
                 if "server to client" in self._type_connection:
                     receiver_thread = Thread(target=self._receiver)
                     receiver_thread.start()
-                break
+                    receiver_thread.join()
+
 
     def request(self, id_fog_node, method, data=None):
         # Подготавливаем данные к отправке запроса
@@ -84,8 +85,8 @@ class ClientDCTP(Thread):
         while True:
             response = self._receive_request(self, self._socks['server to client'])
             if response is None:
-                print('Нет соединения.')
-                self.connect()
+                print(f'Нет соединения {self._worker_name}.')
+                time.sleep(1)
                 break
             response = self._dict_methods_call[response['method']](response['data'])
             if response is None:
@@ -132,12 +133,15 @@ class ServerDCTP(Thread):
                 response = self._receive_request(worker_sock)
                 if response:
                     if response["id"] not in self._workers.keys():
-                        print(f'Create {response["id"]} ')
+                        print(f'Start {response["id"]} ')
+
+                    self._workers[response['id']] = self._workers.get(response['id'], {})
+                    self._workers[response['id']][response['type']] = worker_sock
+
                     if response['type'] == "client to server":
                         receiver_thread = Thread(target=self._receiver, args=(worker_sock, response['id']))
                         receiver_thread.start()
-                    self._workers[response['id']] = self._workers.get(response['id'], {})
-                    self._workers[response['id']][response['type']] = worker_sock
+
 
             except KeyboardInterrupt:
                 sock.close()
@@ -182,7 +186,10 @@ class ServerDCTP(Thread):
             except:
                 if id_client in self._workers.keys():
                     print(f'{id_client} разорвал соединение')
+                    sock.close()
                     self._workers.pop(id_client)
+
+                break
 
     def request(self, id_worker, method, data=None):
         # Подготавливаем данные к отправке запроса

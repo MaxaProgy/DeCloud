@@ -48,9 +48,8 @@ def pub_to_address(public_key):
 
 
 class Wallet:
-    def __init__(self, type_wallet, private_key=None):
+    def __init__(self, private_key=None):
         self._private_key = private_key
-        self._type_wallet = type_wallet
         if self._private_key is None:
             # Если не передаем private_key в Wallet, то сохдаем его сами
             self.generate_private_key()
@@ -78,19 +77,9 @@ class Wallet:
         # Делаем так, чтобы ключь всегда был одной длины
         return '0' * (128 - len(hex(public_key)[2:])) + hex(public_key)[2:]
 
-    def save_private_key(self):
+    def save_private_key(self, path):
         # Сохраняем private_key в файл
-
-        path_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data', self._type_wallet)
-        if not os.path.exists(path_dir):
-            os.mkdir(path_dir)
-
-        path_file_key = os.path.join(path_dir, 'key')
-        if not os.path.exists(path_file_key):
-            with open(path_file_key, 'w') as output:
-                output.write('')
-
-        with open(path_file_key, 'a') as output:
+        with open(path, 'a') as output:
             output.write(self._private_key + "\n")
 
     def sign(self, data):

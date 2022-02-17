@@ -1,7 +1,7 @@
 import os
 
 
-def get_path(dirs, file=None):
+def get_path(dirs, file):
     path = os.path.join(os.path.dirname(os.path.realpath(__file__)), *dirs)
     if not os.path.exists(path):
         os.makedirs(path)
@@ -10,3 +10,7 @@ def get_path(dirs, file=None):
         with open(path, 'w') as f:
             f.write('')
     return path
+
+
+def exists_path(dirs, file):
+    return os.path.exists(os.path.join(os.path.dirname(os.path.realpath(__file__)), *dirs, file))

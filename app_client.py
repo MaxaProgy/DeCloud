@@ -1,6 +1,5 @@
 import os
 import sys
-from multiprocessing import Process
 
 from PyQt5.QtCore import Qt
 import requests
@@ -10,23 +9,23 @@ from PyQt5.QtWidgets import QApplication, QFileDialog, QMainWindow, QDesktopWidg
     QFrame, QHBoxLayout, QMenu, QAction, QHeaderView
 
 from fog_nodes_manager import ManagerFogNodes
-from utils import get_path
+from utils import get_path, exists_path
 from pool import Pool
 from wallet import Wallet
-
-SIZE_REPLICA = 1024 ** 2
-PATH_POOL_KEY = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data', 'pool', 'key')
-POOL_PORT = 2222
+from fog_node import SIZE_REPLICA
+from client_storage_manager import PORT_DISPATCHER_CLIENT_STORAGE, DispatcherClientStorage
 
 
 class AppClient(QMainWindow, ManagerFogNodes):
-    def __init__(self, port=7000):
+    def __init__(self):
         super().__init__()
-        self._port = port
+        self.pool = None
         self.client_storages = {}
         self._address_pool = None
         self._current_address_client_storage = ''
         self.initUI()
+        if exists_path(dirs=['data', 'pool'], file='key'):
+            self.start_pool()
 
     def initUI(self):
         self.geometry = QDesktopWidget().availableGeometry()
@@ -41,7 +40,7 @@ class AppClient(QMainWindow, ManagerFogNodes):
 
         with open(get_path(dirs=['data', 'client_storage'], file='key'), 'r') as f:
             for key in f.readlines():
-                wallet = Wallet('client_storage', key[:-1])
+                wallet = Wallet(key[:-1])
                 if self._current_address_client_storage == '':
                     self._current_address_client_storage = wallet.address
                 self.client_storages[wallet.address] = {'wallet': wallet, 'id_current_dir': None}
@@ -61,7 +60,6 @@ class AppClient(QMainWindow, ManagerFogNodes):
         self.clientStoragesExplorer.itemDoubleClicked.connect(self.open_object)
         if self.client_storages:
             self.show_current_dir(None)
-        self.start_pool()
 
         layoutClientStorages.addWidget(self.clientStoragesExplorer)
         tabClientStorages.setLayout(layoutClientStorages)
@@ -92,7 +90,7 @@ class AppClient(QMainWindow, ManagerFogNodes):
         self.fogNodesWidget.setSelectionMode(QAbstractItemView.SingleSelection)
         with open(get_path(dirs=['data', 'fog_nodes'], file='key'), 'r') as f:
             for key in f.readlines():
-                wallet = Wallet('fog_nodes', key[:-1])
+                wallet = Wallet(key[:-1])
                 address = wallet.address
                 row = self.fogNodesWidget.rowCount()
                 self.fogNodesWidget.setRowCount(row + 1)
@@ -122,6 +120,11 @@ class AppClient(QMainWindow, ManagerFogNodes):
         if self._current_address_client_storage:
             self.setWindowTitle("DeCloud  —  " + self._current_address_client_storage)
 
+    def closeEvent(self, event):
+        self.showMinimized()
+        event.ignore()
+
+
     def _createActions(self):
         self.newAction = QAction(self)
 
@@ -150,7 +153,7 @@ class AppClient(QMainWindow, ManagerFogNodes):
         # ---------------
 
         self.createPoolAction = QAction("Create Pool", self)
-        self.createPoolAction.triggered.connect(self.connect_pool)
+        self.createPoolAction.triggered.connect(self.start_pool)
 
         # ---------------
         # Action Fog Nodes
@@ -240,13 +243,6 @@ class AppClient(QMainWindow, ManagerFogNodes):
                 print((count * 100) // (size_file // SIZE_REPLICA + (size_file % SIZE_REPLICA != 0)), "%")
                 yield data
 
-    @staticmethod
-    def start_process_pool(private_key):
-        try:
-            pool = Pool(private_key)
-        except Exception as e:
-            print(e)
-
     def get_current_client_wallet(self):
         # Получить кошелек
         wallet = self.client_storages[self._current_address_client_storage]['wallet']
@@ -283,24 +279,18 @@ class AppClient(QMainWindow, ManagerFogNodes):
         print(f'Node {data["id_fog_node"]} {data["state"]}')
 
     def start_pool(self):
-        if os.path.exists(PATH_POOL_KEY):
-            with open(PATH_POOL_KEY) as f:
-                private_key = f.readline()
-                process_node = Process(target=self.start_process_pool, args=[private_key])
-                process_node.start()
-                self._address_pool = Wallet("pool", private_key).address
-                print(f'Start POOL {self._address_pool}')
-
-    def connect_pool(self):
-        wallet = Wallet('pool')
-        wallet.generate_private_key()
-        wallet.save_private_key()
-        print(f'Create POOL {wallet.address}')
+        try:
+            self.pool = Pool()
+            self.pool.start()
+        except Exception as e:
+            print(e)
         self.createPoolAction.setEnabled(False)
-        self.start_pool()
+        with open(get_path(dirs=['data', 'pool'], file='key'), 'r') as f:
+            self._address_pool = Wallet(f.readline()).address
 
     def current_change_client_storage(self, row):
-        self.createClientStorageAction.setEnabled(self.fogNodesWidget.item(row, 0).text() not in self.client_storages.keys())
+        self.createClientStorageAction.setEnabled(
+            self.fogNodesWidget.item(row, 0).text() not in self.client_storages.keys())
 
     def change_client_storage_address(self):
         self._current_address_client_storage = self.sender().text()
@@ -314,10 +304,11 @@ class AppClient(QMainWindow, ManagerFogNodes):
         address = self.fogNodesWidget.item(self.fogNodesWidget.currentRow(), 0).text()
         with open(get_path(dirs=['data', 'fog_nodes'], file='key'), 'r') as f:
             for key in f.readlines():
-                wallet = Wallet('fog_nodes', key[:-1])
+                wallet = Wallet(key[:-1])
                 if wallet.address == address:
-                    self.client_storages[address] = {'wallet': Wallet('client_storage', key[:-1]), 'id_current_dir': None}
-                    self.client_storages[address]['wallet'].save_private_key()
+                    self.client_storages[address] = {'wallet': Wallet(key[:-1]),
+                                                     'id_current_dir': None}
+                    self.client_storages[address]['wallet'].save_private_key(get_path(dirs=['data', 'client_storage'], file='key'))
                     self.fogNodesWidget.item(self.fogNodesWidget.currentRow(), 0).setForeground(QColor('green'))
                     self.setWindowTitle("DeCloud  —  " + address)
                     self._current_address_client_storage = address
@@ -347,7 +338,7 @@ class AppClient(QMainWindow, ManagerFogNodes):
                         data['id_current_dir'] = id_current_dir
                     data = self.signed_data_request(data)
 
-                    response = requests.get(f'http://127.0.0.1:{self._port}/api/make_dir',
+                    response = requests.get(f'http://127.0.0.1:{PORT_DISPATCHER_CLIENT_STORAGE}/api/make_dir',
                                             json=data).json()
                     if 'error' in response:
                         QMessageBox.critical(self, "Error", response['error'], QMessageBox.Ok)
@@ -377,7 +368,8 @@ class AppClient(QMainWindow, ManagerFogNodes):
 
                 params = self.signed_data_request(params)
 
-                response = requests.post(f'http://127.0.0.1:{self._port}/api/save_file', params=params,
+                response = requests.post(f'http://127.0.0.1:{PORT_DISPATCHER_CLIENT_STORAGE}/api/save_file',
+                                         params=params,
                                          data=self.chunking(path)).json()
                 if 'error' in response:
                     QMessageBox.critical(self, "Error", response['error'], QMessageBox.Ok)
@@ -405,7 +397,7 @@ class AppClient(QMainWindow, ManagerFogNodes):
             # Передаем id объекта, если создаем новую директорию или открываем файл
             data['id_object'] = id_obj
 
-        response = requests.get(f'http://127.0.0.1:{self._port}/api/get_object', params=data).json()
+        response = requests.get(f'http://127.0.0.1:{PORT_DISPATCHER_CLIENT_STORAGE}/api/get_object', params=data).json()
         self.clientStoragesExplorer.clear()
         self.clientStoragesExplorer.setRowCount(0)
 
@@ -425,7 +417,7 @@ class AppClient(QMainWindow, ManagerFogNodes):
             # Передаем id объекта, если создаем новую директорию или открываем файл
             data['id_object'] = id_obj
 
-        response = requests.get(f'http://127.0.0.1:{self._port}/api/get_object',
+        response = requests.get(f'http://127.0.0.1:{PORT_DISPATCHER_CLIENT_STORAGE}/api/get_object',
                                 params=data)
         # Сохраняем во временные файлы и открываем
         file_name = os.path.join(os.environ['TEMP'],
@@ -438,7 +430,9 @@ class AppClient(QMainWindow, ManagerFogNodes):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    client_manager = AppClient()
+    dispatcher = DispatcherClientStorage(PORT_DISPATCHER_CLIENT_STORAGE)
+    dispatcher.start()
 
+    client_manager = AppClient()
     client_manager.show()
     sys.exit(app.exec_())

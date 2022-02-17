@@ -7,24 +7,33 @@ from fog_node import FogNode
 from utils import get_path
 
 
-class ManagerFogNodes():
+class WorkerProcess(Process):
+    def __init__(self, cpu, port):
+        super().__init__()
+        self._cpu = cpu
+        self._port = port
+        self.fog_nodes = []
+        self.client = None
+
+    def run(self):
+        self.client = ClientDCTP(f'WORKER {str(self._cpu)}', '127.0.0.1', self._port)
+
+        @self.client.method('add_fog_node')
+        def add_fog_node(data):
+            self.fog_nodes.append(FogNode(self.client, data['private_key']))
+            self.fog_nodes[-1].start()
+
+        self.client.start()
+
+
+class ManagerFogNodes:
     def __init__(self):
+        self.workers = []
         self._cpu_count = cpu_count()
         self._count_fog_nodes = 0
         self._server_fog_nodes = None
         self.run_server()
         self.load_fog_nodes()
-
-    @staticmethod
-    def worker_process(cpu, port):
-        worker = ClientDCTP('PROCESS WORKER ' + str(cpu), '127.0.0.1', port)
-
-        @worker.method('add_fog_node')
-        def add_fog_node(data):
-            fog_node = FogNode(worker, data['private_key'])
-            fog_node.start()
-
-        worker.start()
 
     def run_server(self):
         self._server_fog_nodes = ServerDCTP()
@@ -36,12 +45,12 @@ class ManagerFogNodes():
                     self.on_change_state(data)
                     break
             except:
-                pass
+                time.sleep(0.1)
 
         self._server_fog_nodes.start()
         for cpu in range(cpu_count()):
-            t = Process(target=self.worker_process, args=[cpu, self._server_fog_nodes.current_port])
-            t.start()
+            self.workers.append(WorkerProcess(cpu, self._server_fog_nodes.current_port))
+            self.workers[-1].start()
         time.sleep(6)
 
     def on_change_state(self, data):
@@ -54,5 +63,5 @@ class ManagerFogNodes():
 
     def add_fog_node(self, private_key=None):
         self._count_fog_nodes += 1
-        self._server_fog_nodes.request(f'PROCESS WORKER {self._count_fog_nodes % self._cpu_count}', 'add_fog_node',
+        self._server_fog_nodes.request(f'WORKER {self._count_fog_nodes % self._cpu_count}', 'add_fog_node',
                                        data={'private_key': private_key})

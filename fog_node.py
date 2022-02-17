@@ -3,6 +3,7 @@ import os
 import time
 from threading import Thread
 
+from utils import get_path
 from wallet import Wallet
 
 SIZE_REPLICA = 1024 ** 2
@@ -83,21 +84,23 @@ class BaseFogNode:
         return self._id_fog_node
 
 
-class FogNode(BaseFogNode):
+class FogNode(BaseFogNode, Thread):
     def __init__(self, process_client, private_key=None):
         BaseFogNode.__init__(self)
+        Thread.__init__(self)
         self._process_client = process_client
+
 
         if private_key is None:
             # Создаем private_key сами
             # и получаем address
-            wallet = Wallet('fog_nodes')
-            wallet.save_private_key()
+            wallet = Wallet()
+            wallet.save_private_key(get_path(dirs=['data', 'fog_nodes'], file='key'))
             self._id_fog_node = wallet.address
             self._check_state = 'create'
         else:
             # Получаем address
-            wallet = Wallet('fog_nodes', private_key)
+            wallet = Wallet(private_key)
             self._id_fog_node = wallet.address
             self._check_state = 'load'
         self._wallet = wallet
@@ -135,33 +138,27 @@ class FogNode(BaseFogNode):
         else:
             return {'error': f'Directory {self._id_fog_node} does not exist.'}
 
-    def start(self):
-        def worker():
-            if self._check_state == 'create':
-                print(f'Create FOG NODE {self.wallet.address} in {self._process_client._worker_name}')
-            elif self._check_state == 'load':
-                print(f'Load FOG NODE {self.wallet.address} in {self._process_client._worker_name}')
+    def run(self):
+        if self._check_state == 'create':
+            print(f'Create FOG NODE {self.wallet.address} in {self._process_client._worker_name}')
+        elif self._check_state == 'load':
+            print(f'Load FOG NODE {self.wallet.address} in {self._process_client._worker_name}')
 
-            self._process_client.request(self._id_fog_node, 'current_state_fog_node',
-                                         {'state': 'preparing', 'id_fog_node': self._id_fog_node})
+        self._process_client.request(self._id_fog_node, 'current_state_fog_node',
+                                     {'state': 'preparing', 'id_fog_node': self._id_fog_node})
 
-            if self._check_state == 'create':
-                # Создаем начальные replicas
-                for _ in range(COUNT_REPLICAS_IN_FOG_NODE):
-                    self._create_random_init_replica()
-            elif self._check_state == 'load':
-                self._load_and_check_replicas()
-                # Добавляем рандомные блоки, если какие-то файлы были удалены,
-                # чтобы размер плота был = COUNT_REPLICAS_IN_FOG_NODE * SIZE_REPLICA
-                while COUNT_REPLICAS_IN_FOG_NODE * SIZE_REPLICA - self._size_fog_node >= SIZE_REPLICA:
-                    self._create_random_init_replica()
+        if self._check_state == 'create':
+            # Создаем начальные replicas
+            for _ in range(COUNT_REPLICAS_IN_FOG_NODE):
+                self._create_random_init_replica()
+        elif self._check_state == 'load':
+            self._load_and_check_replicas()
+            # Добавляем рандомные блоки, если какие-то файлы были удалены,
+            # чтобы размер плота был = COUNT_REPLICAS_IN_FOG_NODE * SIZE_REPLICA
+            while COUNT_REPLICAS_IN_FOG_NODE * SIZE_REPLICA - self._size_fog_node >= SIZE_REPLICA:
+                self._create_random_init_replica()
 
-            self._process_client.request(self._id_fog_node, 'current_state_fog_node',
-                                         {'state': 'ready', 'id_fog_node': self._id_fog_node})
-            while True:
-                time.sleep(10)
-
-        # run node
-        job_node = Thread(target=worker)
-        job_node.start()
-
+        self._process_client.request(self._id_fog_node, 'current_state_fog_node',
+                                     {'state': 'ready', 'id_fog_node': self._id_fog_node})
+        while True:
+            time.sleep(10)

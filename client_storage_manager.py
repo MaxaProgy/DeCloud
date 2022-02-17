@@ -1,16 +1,18 @@
 # -*- coding: utf-8 -*
-
+from multiprocessing import Process
 from queue import Queue
-from time import sleep
 import json
 import os
-from threading import Thread
 
+from dctp1 import ClientDCTP
 from fog_node import BaseFogNode, SIZE_REPLICA
 from flask import Flask, request, jsonify, Response
+
+from pool import get_pools_host
 from wallet import sign_verification
 
 SESSION_TIME_LIFE = 24 * 60 * 60
+PORT_DISPATCHER_CLIENT_STORAGE = 7000
 
 
 class FileExplorer:
@@ -156,31 +158,36 @@ class ClientStorageExplorer(BaseFogNode):
         return b''.join([self._load_replica(hash) for hash in hashes])
 
 
-class DispatcherClientStorage:
-    def __init__(self, port=7000):
+class DispatcherClientStorage(Process):
+    def __init__(self, port):
+        Process.__init__(self)
         self._port = port
         self._session_keys = {}
         path = ClientStorageExplorer.get_path('temp')
         if not os.path.exists(path):
             os.makedirs(path)
 
-        self.delete_file_queue = Queue()
-        self.delete_file_thread = Thread(target=self.delete_file)
-        self.delete_file_thread.start()
+        ## self.delete_file_queue = Queue()
+        ## self.delete_file_thread = Thread(target=self.delete_file)
+        ## self.delete_file_thread.start()
 
-    def delete_file(self):
-        while True:
-            if not self.delete_file_queue.empty():
-                path = self.delete_file_queue.get()
-                while True:
-                    try:
-                        os.remove(path)
-                        break
-                    except:
-                        sleep(1)
-            sleep(10)
+    ##def delete_file(self):
+    ##    while True:
+    ##        if not self.delete_file_queue.empty():
+    ##            path = self.delete_file_queue.get()
+    ##            while True:
+    ##                try:
+    ##                    os.remove(path)
+    ##                    break
+    ##                except:
+    ##                   sleep(1)
+    ##        sleep(10)
 
     def run(self):
+        ip, port = get_pools_host()[0]
+        client_pool = ClientDCTP('POOL', ip, port)
+        client_pool.start()
+
 
         app = Flask(__name__)
 
@@ -209,7 +216,12 @@ class DispatcherClientStorage:
                 if not chunk:
                     break
                 hashes.append(client._save_replica(chunk))
-            hash_file = client._save_replica(bytes(json.dumps([current_dir.hash, data['file_name'], hashes]), 'utf-8'))
+                # client_pool.request(data['address'], 'commit_replica', chunk)
+
+            chunk = bytes(json.dumps([current_dir.hash, data['file_name'], hashes]), 'utf-8')
+            hash_file = client._save_replica(chunk)
+            # client_pool.request(data['address'], 'commit_replica', chunk)
+
             file = FileExplorer(data['file_name'], hash_file)
             current_dir.add_child(file)
             client.save_state()
@@ -278,8 +290,3 @@ class DispatcherClientStorage:
                 return jsonify(dct_files_and_directories)
 
         app.run(host='127.0.0.1', port=self._port)
-
-
-if __name__ == '__main__':
-    client = DispatcherClientStorage()
-    client.run()
