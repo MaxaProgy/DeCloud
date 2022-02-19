@@ -367,7 +367,6 @@ class AppClient(QMainWindow, ManagerFogNodes):
                     params['id_current_dir'] = id_current_dir
 
                 params = self.signed_data_request(params)
-
                 response = requests.post(f'http://127.0.0.1:{PORT_DISPATCHER_CLIENT_STORAGE}/api/save_file',
                                          params=params,
                                          data=self.chunking(path)).json()
@@ -375,6 +374,8 @@ class AppClient(QMainWindow, ManagerFogNodes):
                     QMessageBox.critical(self, "Error", response['error'], QMessageBox.Ok)
                 else:
                     self.show_current_dir(id_current_dir)
+
+
 
     def open_object(self, item):
         # Открытие объекта/переход в новую папку

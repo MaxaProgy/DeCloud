@@ -1,14 +1,17 @@
+import hashlib
 from multiprocessing import Process
 
 from blockchain import Blockchain
-from dctp1 import ServerDCTP, send_status_code
+from dctp1 import ServerDCTP
 from utils import exists_path, get_path
 from wallet import Wallet
 
-POOL_PORT = 8000
+POOL_PORT = 4909
+
 
 def get_pools_host():
-    return [['127.0.0.1', 8000]]
+    return [['127.0.0.1', POOL_PORT]]
+
 
 class Pool(Process):
     def __init__(self):
@@ -18,6 +21,7 @@ class Pool(Process):
             self._wallet = Wallet()
             self._wallet.save_private_key(get_path(dirs=['data', 'pool'], file='key'))
             print(f'Create POOL {self._wallet.address}')
+
         else:
             with open(get_path(dirs=['data', 'pool'], file='key'), 'r') as f:
                 self._wallet = Wallet(f.readline())
@@ -26,16 +30,18 @@ class Pool(Process):
         server = ServerDCTP(POOL_PORT)
         print(f'Start POOL {self._wallet.address}')
 
-        @server.method('new_transaction')
-        def new_transaction(data):
-            self._blockchain.new_transaction(data['name'], data['hash_list'])
+        @server.method('send_replica')
+        def send_replica(json, data):
+            print(id(data))
+            print(get_path(dirs=['data', 'pool', 'waiting_replicas'],
+                           file=hashlib.sha3_256(data).hexdigest()))
+            with open(get_path(dirs=['data', 'pool', 'waiting_replicas'],
+                               file=hashlib.sha3_256(data).hexdigest()), 'wb') as f:
+                print(3333444)
+                f.write(data)
 
-        @server.method('is_exist_replica')
-        def is_exist_replica(data):
-            if not self._blockchain.is_exist_replica(data['hash_list']):
-                return send_status_code(100)
         @server.method('commit_replica')
-        def commit_replica(data):
+        def commit_replica(json, data):
             pass
 
         server.start()

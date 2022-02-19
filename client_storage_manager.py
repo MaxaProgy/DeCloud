@@ -12,7 +12,7 @@ from pool import get_pools_host
 from wallet import sign_verification
 
 SESSION_TIME_LIFE = 24 * 60 * 60
-PORT_DISPATCHER_CLIENT_STORAGE = 7000
+PORT_DISPATCHER_CLIENT_STORAGE = 7019
 
 
 class FileExplorer:
@@ -193,6 +193,7 @@ class DispatcherClientStorage(Process):
 
         @app.route('/api/save_file', methods=['POST'])
         def save_file():
+            print(444)
             # Добавляем файл в файловую сиситему
             data = dict(request.args)
             if not all([key in data.keys() for key in ['address', 'public_key', 'file_name', 'sign']]):
@@ -211,16 +212,17 @@ class DispatcherClientStorage(Process):
                 return jsonify({'error': f'the current object already has the given name {data["file_name"]}'})
 
             hashes = []
+            i = 0
             while True:
+                i+=1
                 chunk = request.stream.read(SIZE_REPLICA)
                 if not chunk:
                     break
                 hashes.append(client._save_replica(chunk))
-                # client_pool.request(data['address'], 'commit_replica', chunk)
-
+                client_pool.request(data['address'], 'send_replica', data=chunk)
             chunk = bytes(json.dumps([current_dir.hash, data['file_name'], hashes]), 'utf-8')
             hash_file = client._save_replica(chunk)
-            # client_pool.request(data['address'], 'commit_replica', chunk)
+            client_pool.request(data['address'], 'send_replica', data=chunk)
 
             file = FileExplorer(data['file_name'], hash_file)
             current_dir.add_child(file)

@@ -1,8 +1,7 @@
 import socket
 import time
 from threading import Thread, RLock
-import json
-
+import json as _json
 
 _DCTP_STATUS_CODE = {0: 'success',
                      100: 'error'}
@@ -35,7 +34,9 @@ class ClientDCTP(Thread):
         try:
             length_response = int.from_bytes(sock.recv(4), 'big')
             with self.lock_obj:
-                return json.loads(sock.recv(length_response).decode('utf-8'))
+                response = _json.loads(sock.recv(length_response).decode('utf-8'))
+                print(response)
+                return response
         except:
             return
 
@@ -43,7 +44,7 @@ class ClientDCTP(Thread):
         # Отправляем два запроса
         # 1 - размер 2
         # 2 - бинарные данные data
-        request = json.dumps(data)
+        request = _json.dumps(data)
 
         sock.send(len(request).to_bytes(4, "big"))
         sock.send(bytes(request, 'utf-8'))
@@ -69,14 +70,12 @@ class ClientDCTP(Thread):
                     receiver_thread.start()
                     receiver_thread.join()
 
-
-    def request(self, id_fog_node, method, data=None):
+    def request(self, id_fog_node, method, data=b'', json={}):
         # Подготавливаем данные к отправке запроса
-
-        request = json.dumps({'method': method, 'data': data})
-
-        self._socks['client to server'].send(bytes(id_fog_node, 'utf-8') + len(request).to_bytes(4, "big"))
-        self._socks['client to server'].send(bytes(id_fog_node, 'utf-8') + bytes(request, 'utf-8'))
+        request = _json.dumps({'method': method, 'json': json})
+        self._socks['client to server'].send(bytes(id_fog_node, 'utf-8') + len(request).to_bytes(4, "big") \
+                                             + len(data).to_bytes(4, "big"))
+        self._socks['client to server'].send(bytes(id_fog_node, 'utf-8') + bytes(request, 'utf-8') + data)
 
         return self._receive_request(self, self._socks['client to server'])
 
@@ -145,6 +144,7 @@ class ServerDCTP(Thread):
 
             except KeyboardInterrupt:
                 sock.close()
+
     @staticmethod
     # Принимаем запрос 1 и 2
     def _receive_request(sock):
@@ -152,7 +152,7 @@ class ServerDCTP(Thread):
             length_response = int.from_bytes(sock.recv(4), 'big')
         except:
             return
-        return json.loads(sock.recv(length_response).decode('utf-8'))
+        return _json.loads(sock.recv(length_response).decode('utf-8'))
 
     @staticmethod
     def _send_request(sock, data=None):
@@ -160,7 +160,7 @@ class ServerDCTP(Thread):
         # 1 - размер 2
         # 2 - бинарные данные data
 
-        request = json.dumps(data)
+        request = _json.dumps(data)
 
         sock.send(len(request).to_bytes(4, "big"))
         sock.send(bytes(request, 'utf-8'))
@@ -169,10 +169,15 @@ class ServerDCTP(Thread):
         # Ждем пока придет запрос и вызываем соответствующий метод
         while True:
             try:
-                address_response = sock.recv(40).decode('utf-8')  # address (40 bytes)
+                address_response = sock.recv(40)
+                print(address_response)
+                address_response = address_response.decode('utf-8')  # address (40 bytes)
+                print(address_response)
                 if address_response in self._clients.keys():
-                    response = json.loads(sock.recv(self._clients[address_response]).decode('utf-8'))
-                    response = self._dict_methods_call[response['method']](response['data'])
+                    response = _json.loads(sock.recv(self._clients[address_response]['json']).decode('utf-8'))
+                    data = sock.recv(self._clients[address_response]['data'])
+                    response = self._dict_methods_call[response['method']](json=response['json'],
+                                                                                data=data[0:-1])
                     if response is None:
                         response = {}
                     if 'status' not in response.keys():
@@ -180,9 +185,9 @@ class ServerDCTP(Thread):
                         response['status text'] = _DCTP_STATUS_CODE[0]
                     self._clients.pop(address_response)
                     self._send_request(sock, response)
-
                 else:
-                    self._clients[address_response] = int.from_bytes(sock.recv(4), 'big')
+                    self._clients[address_response] = {'json': int.from_bytes(sock.recv(4), 'big'),
+                                                       'data': int.from_bytes(sock.recv(4), 'big')}
             except:
                 if id_client in self._workers.keys():
                     print(f'{id_client} разорвал соединение')

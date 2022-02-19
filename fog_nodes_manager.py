@@ -39,10 +39,10 @@ class ManagerFogNodes:
         self._server_fog_nodes = ServerDCTP()
 
         @self._server_fog_nodes.method('current_state_fog_node')
-        def current_state_fog_node(data):
+        def current_state_fog_node(json, data):
             try:
                 while True:
-                    self.on_change_state(data)
+                    self.on_change_state(json)
                     break
             except:
                 time.sleep(0.1)

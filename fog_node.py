@@ -145,7 +145,7 @@ class FogNode(BaseFogNode, Thread):
             print(f'Load FOG NODE {self.wallet.address} in {self._process_client._worker_name}')
 
         self._process_client.request(self._id_fog_node, 'current_state_fog_node',
-                                     {'state': 'preparing', 'id_fog_node': self._id_fog_node})
+                                     json={'state': 'preparing', 'id_fog_node': self._id_fog_node})
 
         if self._check_state == 'create':
             # Создаем начальные replicas
@@ -159,6 +159,6 @@ class FogNode(BaseFogNode, Thread):
                 self._create_random_init_replica()
 
         self._process_client.request(self._id_fog_node, 'current_state_fog_node',
-                                     {'state': 'ready', 'id_fog_node': self._id_fog_node})
+                                     json={'state': 'ready', 'id_fog_node': self._id_fog_node})
         while True:
             time.sleep(10)
