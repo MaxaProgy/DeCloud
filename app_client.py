@@ -397,8 +397,13 @@ class AppClient(QMainWindow, ManagerFogNodes):
         if id_obj not in {None, ''}:
             # Передаем id объекта, если создаем новую директорию или открываем файл
             data['id_object'] = id_obj
+        while True:
+            try:
+                response = requests.get(f'http://127.0.0.1:{PORT_DISPATCHER_CLIENT_STORAGE}/api/get_object', params=data).json()
+                break
+            except:
+                pass
 
-        response = requests.get(f'http://127.0.0.1:{PORT_DISPATCHER_CLIENT_STORAGE}/api/get_object', params=data).json()
         self.clientStoragesExplorer.clear()
         self.clientStoragesExplorer.setRowCount(0)
 

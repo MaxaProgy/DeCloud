@@ -35,7 +35,6 @@ class ClientDCTP(Thread):
             length_response = int.from_bytes(sock.recv(4), 'big')
             with self.lock_obj:
                 response = _json.loads(sock.recv(length_response).decode('utf-8'))
-                print(response)
                 return response
         except:
             return
@@ -170,14 +169,12 @@ class ServerDCTP(Thread):
         while True:
             try:
                 address_response = sock.recv(40)
-                print(address_response)
                 address_response = address_response.decode('utf-8')  # address (40 bytes)
-                print(address_response)
                 if address_response in self._clients.keys():
                     response = _json.loads(sock.recv(self._clients[address_response]['json']).decode('utf-8'))
-                    data = sock.recv(self._clients[address_response]['data'])
+                    response['json']['address'] = address_response
                     response = self._dict_methods_call[response['method']](json=response['json'],
-                                                                                data=data[0:-1])
+                                                                data=sock.recv(self._clients[address_response]['data']))
                     if response is None:
                         response = {}
                     if 'status' not in response.keys():
@@ -210,3 +207,6 @@ class ServerDCTP(Thread):
     @property
     def current_port(self):
         return self._port
+
+    def get_workers(self):
+        return self._workers.keys()

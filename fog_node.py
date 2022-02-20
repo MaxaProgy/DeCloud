@@ -3,7 +3,8 @@ import os
 import time
 from threading import Thread
 
-from utils import get_path
+from dctp1 import ClientDCTP
+from utils import get_path, get_pools_fn_host
 from wallet import Wallet
 
 SIZE_REPLICA = 1024 ** 2
@@ -139,6 +140,10 @@ class FogNode(BaseFogNode, Thread):
             return {'error': f'Directory {self._id_fog_node} does not exist.'}
 
     def run(self):
+        ip, port = get_pools_fn_host()[0]
+        pool_client = ClientDCTP(self.wallet.address, ip, port)
+        pool_client.start()
+
         if self._check_state == 'create':
             print(f'Create FOG NODE {self.wallet.address} in {self._process_client._worker_name}')
         elif self._check_state == 'load':

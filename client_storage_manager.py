@@ -8,11 +8,11 @@ from dctp1 import ClientDCTP
 from fog_node import BaseFogNode, SIZE_REPLICA
 from flask import Flask, request, jsonify, Response
 
-from pool import get_pools_host
+from utils import get_pools_csm_host
 from wallet import sign_verification
 
 SESSION_TIME_LIFE = 24 * 60 * 60
-PORT_DISPATCHER_CLIENT_STORAGE = 7019
+PORT_DISPATCHER_CLIENT_STORAGE = 7022
 
 
 class FileExplorer:
@@ -184,8 +184,8 @@ class DispatcherClientStorage(Process):
     ##        sleep(10)
 
     def run(self):
-        ip, port = get_pools_host()[0]
-        client_pool = ClientDCTP('POOL', ip, port)
+        ip, port = get_pools_csm_host()[0]
+        client_pool = ClientDCTP('CLIENTS STORAGE MANAGER', ip, port)
         client_pool.start()
 
 
@@ -193,12 +193,10 @@ class DispatcherClientStorage(Process):
 
         @app.route('/api/save_file', methods=['POST'])
         def save_file():
-            print(444)
             # Добавляем файл в файловую сиситему
             data = dict(request.args)
             if not all([key in data.keys() for key in ['address', 'public_key', 'file_name', 'sign']]):
                 return jsonify({'error': 'required parameters are not specified: public_key, file, sign'})
-
             sign = data.pop('sign')
             if not sign_verification(data=data, sign=sign, public_key=data['public_key']):
                 return jsonify({'error': 'signature is not valid'})
@@ -223,6 +221,7 @@ class DispatcherClientStorage(Process):
             chunk = bytes(json.dumps([current_dir.hash, data['file_name'], hashes]), 'utf-8')
             hash_file = client._save_replica(chunk)
             client_pool.request(data['address'], 'send_replica', data=chunk)
+            response = client_pool.request(data['address'], 'commit_replica', json={'hash': hash_file})
 
             file = FileExplorer(data['file_name'], hash_file)
             current_dir.add_child(file)
