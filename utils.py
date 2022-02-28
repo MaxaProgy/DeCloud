@@ -1,11 +1,8 @@
 import os
-import time
+import json
 
-POOL_CSM_PORT = 4914
-POOL_FN_PORT = 4913
-
-hosts_pool_fn = {}
-hosts_pool_csm = {}
+POOL_ROOT_IP = '127.0.0.1'
+from variables import POOL_CSM_PORT, POOL_FN_PORT
 
 
 def get_path(dirs, file=None):
@@ -30,24 +27,32 @@ def exists_path(dirs, file=None):
     return os.path.exists(os.path.join(os.path.dirname(os.path.realpath(__file__)), *dirs))
 
 
+def get_size_file(dirs, file):
+    return os.path.getsize(get_path(dirs=dirs, file=file))
+
+
+def _read_pools_host():
+    if not exists_path(dirs=['data', 'pool'], file='pools_host'):
+        return {}
+
+    with open(get_path(dirs=['data', 'pool'], file='pools_host'), 'r') as f:
+        return json.loads(f.read())
+
+
 def get_pools_address():
-    return list(hosts_pool_fn.keys())
-
-def get_pools_csm_host():
-    while not hosts_pool_csm:
-        time.sleep(1)
-    return hosts_pool_csm[list(hosts_pool_csm.keys())[0]]
+    return list(_read_pools_host().keys())
 
 
-def get_pools_fn_host():
-    while not hosts_pool_fn:
-        time.sleep(1)
-    return hosts_pool_fn[list(hosts_pool_fn.keys())[0]]
+def get_pools_host():
+    pools = _read_pools_host()
+    if pools:
+        return [(pools[key]) for key in pools]
+    else:
+        return [(POOL_ROOT_IP, POOL_CSM_PORT, POOL_FN_PORT)]
 
 
-def set_pools_fn_host(name, ip, port):
-    hosts_pool_fn[name] = (ip, port)
-
-
-def set_pools_csm_host(name, ip, port):
-    hosts_pool_csm[name] = (ip, port)
+def append_pool_host(name, ip, port_csm, port_fn):
+    pools = _read_pools_host()
+    pools[name] = (ip, port_csm, port_fn)
+    with open(get_path(dirs=['data', 'pool'], file='pools_host'), 'w') as f:
+        f.write(json.dumps(pools))

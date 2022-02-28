@@ -1,17 +1,15 @@
-import hashlib
+from _pysha3 import keccak_256 as sha3_256
 import time
 from multiprocessing import Process
 from blockchain import Blockchain
-from dctp1 import ServerDCTP, send_status_code
-from utils import exists_path, get_path, POOL_CSM_PORT, POOL_FN_PORT, set_pools_fn_host, set_pools_csm_host
+from dctp import ServerDCTP, send_status_code
+from utils import exists_path, get_path, POOL_CSM_PORT, POOL_FN_PORT, append_pool_host
 from wallet import Wallet
 
 
 class Pool(Process):
     def __init__(self):
         super().__init__()
-
-
         if not exists_path(dirs=['data', 'pool'], file='key'):
             self._wallet = Wallet()
             self._wallet.save_private_key(get_path(dirs=['data', 'pool'], file='key'))
@@ -23,8 +21,7 @@ class Pool(Process):
         self._ip = '127.0.0.1'
         self._port_csm = POOL_CSM_PORT
         self._port_fn = POOL_FN_PORT
-        set_pools_fn_host(self._wallet.address, self._ip, self._port_fn)
-        set_pools_csm_host(self._wallet.address, self._ip, self._port_csm)
+        append_pool_host(self._wallet.address, self._ip, self._port_csm, self._port_fn)
 
     def run(self):
         server_CSM = ServerDCTP(POOL_CSM_PORT)
@@ -32,7 +29,7 @@ class Pool(Process):
         @server_CSM.method('send_replica')
         def send_replica(json, data):
             with open(get_path(dirs=['data', 'pool', 'waiting_replicas'],
-                               file=hashlib.sha3_256(data).hexdigest()), 'wb') as f:
+                               file=sha3_256(data).hexdigest()), 'wb') as f:
                 f.write(data)
 
         @server_CSM.method('commit_replica')
@@ -43,6 +40,10 @@ class Pool(Process):
         server_CSM.start()
 
         server_FN = ServerDCTP(POOL_FN_PORT)
+
+        @server_FN.method('get_balance')
+        def get_balance(json, data):
+            return {'amount': self._blockchain.get_balance(json['address'])}
 
         server_FN.start()
 

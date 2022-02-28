@@ -1,10 +1,10 @@
-import hashlib
+from _pysha3 import keccak_256 as sha3_256
 import os
 import time
 from threading import Thread
 
-from dctp1 import ClientDCTP
-from utils import get_path, get_pools_fn_host
+from dctp import ClientDCTP
+from utils import get_path, get_pools_host
 from wallet import Wallet
 
 SIZE_REPLICA = 1024 ** 2
@@ -26,9 +26,9 @@ class BaseFogNode:
 
     def _save_replica(self, replica, random_replica=False):
         if random_replica:
-            hex_hash = hashlib.sha3_256(replica).hexdigest()[:SLICE_FOR_RANDOM_HASH]
+            hex_hash = sha3_256(replica).hexdigest()[:SLICE_FOR_RANDOM_HASH]
         else:
-            hex_hash = hashlib.sha3_256(replica).hexdigest()
+            hex_hash = sha3_256(replica).hexdigest()
 
         # находим путь для сохранения разбивая хэш на пары. Создаемм папки и сохраняем файл
         path_to_dir_file = self.get_path(self._id_fog_node,
@@ -58,7 +58,7 @@ class BaseFogNode:
         if os.path.exists(path_to_file):
             with open(path_to_file, 'rb') as f:
                 data = f.read()
-            if hash != hashlib.sha3_256(data).hexdigest():
+            if hash != sha3_256(data).hexdigest():
                 self._delete_replica(hash)
         if not os.path.exists(path_to_file):
             raise Exception('В будущем дописать, если файла нет то делать запрос в pool')
@@ -129,7 +129,7 @@ class FogNode(BaseFogNode, Thread):
                     # в противном случаем удалем файл
                     hash_replica = ''.join(directory_path[len(path) + 1:].split('\\')) + file_name
                     file = open(os.path.join(directory_path, file_name), 'rb').read()
-                    if hashlib.sha3_256(file).hexdigest()[-len(hash_replica):] == hash_replica and \
+                    if sha3_256(file).hexdigest()[-len(hash_replica):] == hash_replica and \
                             (len(hash_replica) == SLICE_FOR_RANDOM_HASH or (len(hash_replica) == 64)) :
                         self._all_hash_replicas.append(hash_replica)
                     else:
@@ -139,10 +139,20 @@ class FogNode(BaseFogNode, Thread):
         else:
             return {'error': f'Directory {self._id_fog_node} does not exist.'}
 
+    @property
+    def pool_client(self):
+        return self._pool_client
+
     def run(self):
-        ip, port = get_pools_fn_host()[0]
-        pool_client = ClientDCTP(self.wallet.address, ip, port)
-        pool_client.start()
+        ip, _, port_fn = get_pools_host()[0]
+        self._pool_client = ClientDCTP(self.wallet.address, ip, port_fn)
+
+        @self._pool_client.method('update_balance')
+        def update_balance(data):
+            self._process_client.request(self._id_fog_node, 'update_balance_fog_node',
+                                         json={'amount': data['amount'], 'id_fog_node': self._id_fog_node})
+
+        self._pool_client.start()
 
         if self._check_state == 'create':
             print(f'Create FOG NODE {self.wallet.address} in {self._process_client._worker_name}')
@@ -165,5 +175,8 @@ class FogNode(BaseFogNode, Thread):
 
         self._process_client.request(self._id_fog_node, 'current_state_fog_node',
                                      json={'state': 'ready', 'id_fog_node': self._id_fog_node})
+
+        self._process_client.request(self._id_fog_node, 'update_balance_fog_node',
+                                     json=self._pool_client.request(self._id_fog_node, 'get_balance'))
         while True:
             time.sleep(10)

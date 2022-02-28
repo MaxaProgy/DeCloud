@@ -2,9 +2,10 @@ import time
 from multiprocessing import cpu_count
 from multiprocessing import Process
 
-from dctp1 import ServerDCTP, ClientDCTP
+from dctp import ServerDCTP, ClientDCTP
 from fog_node import FogNode
 from utils import get_path
+from wallet import Wallet
 
 
 class WorkerProcess(Process):
@@ -12,7 +13,7 @@ class WorkerProcess(Process):
         super().__init__()
         self._cpu = cpu
         self._port = port
-        self.fog_nodes = []
+        self.fog_nodes = {}
         self.client = None
 
     def run(self):
@@ -20,15 +21,19 @@ class WorkerProcess(Process):
 
         @self.client.method('add_fog_node')
         def add_fog_node(data):
-            self.fog_nodes.append(FogNode(self.client, data['private_key']))
-            self.fog_nodes[-1].start()
+            self.fog_nodes[data['address']] = FogNode(self.client, data['private_key'])
+            self.fog_nodes[data['address']].start()
+
+        @self.client.method('get_balance')
+        def get_balance(data):
+            return self.fog_nodes[data['address']].pool_client.request(data['address'], 'get_balance')
 
         self.client.start()
 
 
 class ManagerFogNodes:
     def __init__(self):
-        self.workers = []
+        self.workers = {}
         self._cpu_count = cpu_count()
         self._count_fog_nodes = 0
         self._server_fog_nodes = None
@@ -47,13 +52,21 @@ class ManagerFogNodes:
             except:
                 time.sleep(0.1)
 
+        @self._server_fog_nodes.method('update_balance_fog_node')
+        def update_balance_fog_node(json, data):
+            self.on_change_balance(json)
+
         self._server_fog_nodes.start()
+
         for cpu in range(cpu_count()):
-            self.workers.append(WorkerProcess(cpu, self._server_fog_nodes.current_port))
-            self.workers[-1].start()
+            worker = WorkerProcess(cpu, self._server_fog_nodes.current_port)
+            worker.start()
         time.sleep(6)
 
     def on_change_state(self, data):
+        pass
+
+    def on_change_balance(self, data):
         pass
 
     def load_fog_nodes(self):
@@ -63,5 +76,14 @@ class ManagerFogNodes:
 
     def add_fog_node(self, private_key=None):
         self._count_fog_nodes += 1
-        self._server_fog_nodes.request(f'WORKER {self._count_fog_nodes % self._cpu_count}', 'add_fog_node',
-                                       data={'private_key': private_key})
+        worker_name = f'WORKER {self._count_fog_nodes % self._cpu_count}'
+        address = Wallet(private_key).address
+        self.workers[worker_name] = self.workers.get(worker_name, []) + [address]
+        self.request(address, 'add_fog_node', data={'private_key': private_key})
+
+
+    def request(self, address, method, data={}):
+        for key in self.workers.keys():
+            if address in self.workers[key]:
+                data['address'] = address
+                return self._server_fog_nodes.request(key, method=method, data=data)

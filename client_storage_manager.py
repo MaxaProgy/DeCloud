@@ -4,15 +4,15 @@ from queue import Queue
 import json
 import os
 
-from dctp1 import ClientDCTP
+from dctp import ClientDCTP
 from fog_node import BaseFogNode, SIZE_REPLICA
 from flask import Flask, request, jsonify, Response
 
-from utils import get_pools_csm_host
+from utils import get_pools_host
 from wallet import sign_verification
 
 SESSION_TIME_LIFE = 24 * 60 * 60
-PORT_DISPATCHER_CLIENT_STORAGE = 7022
+from variables import PORT_DISPATCHER_CLIENT_STORAGE
 
 
 class FileExplorer:
@@ -184,10 +184,9 @@ class DispatcherClientStorage(Process):
     ##        sleep(10)
 
     def run(self):
-        ip, port = get_pools_csm_host()[0]
-        client_pool = ClientDCTP('CLIENTS STORAGE MANAGER', ip, port)
+        ip, port_csm, _ = get_pools_host()[0]
+        client_pool = ClientDCTP('CLIENTS STORAGE MANAGER', ip, port_csm)
         client_pool.start()
-
 
         app = Flask(__name__)
 

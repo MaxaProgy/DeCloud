@@ -1,28 +1,12 @@
-import hashlib
+from _pysha3 import keccak_256 as sha3_256
 import json
 import os
-from py_ecc import secp256k1
-from py_ecc.secp256k1 import ecdsa_raw_sign, ecdsa_raw_recover
-
-
-def _address_check_sum(address):
-    # Формируем address по следующему условию:
-    # Если каждый 4 символ в address буква от a до f, то меняем их регистр с lower на upper
-    address = address.lower()
-    hash_addr = bin(int(hashlib.sha3_256(address.encode()).hexdigest(), 16))
-    hash_addr = '0' * (256 - len(hash_addr)) + hash_addr[2:]
-    res = ''
-    for i in range(len(address)):
-        if address[i].isalpha() and hash_addr[4 * i] == '1':
-            res += address[i].upper()
-        else:
-            res += address[i]
-    return res
+from py_ecc.secp256k1 import ecdsa_raw_sign, ecdsa_raw_recover, privtopub
 
 
 def check_valid_address(address):
     # Проверяем правильность ввода address
-    return address == _address_check_sum(address)
+    return address == Wallet._address_check_sum(address)
 
 
 def sign_verification(data, sign, public_key):
@@ -34,17 +18,12 @@ def sign_verification(data, sign, public_key):
     """
 
     sign = (int(sign[0:4], 16), int(sign[4:68], 16), int(sign[68:], 16),)
-    data = hashlib.sha3_256(bytes(json.dumps(data), 'utf-8')).digest()
+    data = sha3_256(bytes(json.dumps(data), 'utf-8')).digest()
     pub = ecdsa_raw_recover(data, sign)
     pub = pub[0].to_bytes(32, 'big') + pub[1].to_bytes(32, 'big')
     pub = int.from_bytes(pub, 'big')
     pub = ('0' * (128 - len(hex(pub)[2:])) + hex(pub)[2:])
     return pub == public_key
-
-
-def pub_to_address(public_key):
-    address = hashlib.sha3_256(bytes(public_key, 'utf-8')).hexdigest()[-40:]
-    return _address_check_sum(address)
 
 
 class Wallet:
@@ -57,11 +36,29 @@ class Wallet:
     def generate_private_key(self):
         # Создание private_key
         # Формируем случайный набор данных и находим от него хэш = private_key
-        self._private_key = hashlib.sha3_256(bytes(''.join([os.urandom(64).hex() for i in range(100)]), 'utf-8')).hexdigest()
+        self._private_key = sha3_256(bytes(''.join([os.urandom(64).hex() for i in range(100)]), 'utf-8')).hexdigest()
+
+    @staticmethod
+    def _address_check_sum(address):
+        # Формируем address по следующему условию:
+        # Если каждый 4 символ в address буква от a до f, то меняем их регистр с lower на upper
+        address = address.lower()
+        hash_addr = bin(int(sha3_256(address.encode()).hexdigest(), 16))
+        hash_addr = '0' * (256 - len(hash_addr)) + hash_addr[2:]
+        res = ''
+        for i in range(len(address)):
+            if address[i].isalpha() and hash_addr[4 * i] == '1':
+                res += address[i].upper()
+            else:
+                res += address[i]
+        return res
+
+    def _pub_to_address(self, public_key):
+        return self._address_check_sum(sha3_256(bytes(public_key, 'utf-8')).hexdigest()[-40:])
 
     @property
     def address(self):
-        return pub_to_address(self.public_key)
+        return self._pub_to_address(self.public_key)
 
     @property
     def private_key(self):
@@ -70,10 +67,11 @@ class Wallet:
     @property
     def public_key(self):
         # Создаем public_key через private_key
-        private_key = int(self._private_key, 16).to_bytes(64, 'big')
-        public_key = secp256k1.privtopub(private_key)
+        private_key = int(self._private_key, 16).to_bytes(32, 'big')
+        public_key = privtopub(private_key)
         public_key = public_key[0].to_bytes(32, 'big') + public_key[1].to_bytes(32, 'big')
         public_key = int.from_bytes(public_key, 'big')
+
         # Делаем так, чтобы ключь всегда был одной длины
         return '0' * (128 - len(hex(public_key)[2:])) + hex(public_key)[2:]
 
@@ -90,7 +88,7 @@ class Wallet:
         :return       : signatura
         """
 
-        data = hashlib.sha3_256(bytes(json.dumps(data), 'utf-8')).digest()
+        data = sha3_256(bytes(json.dumps(data), 'utf-8')).digest()
         ans = ecdsa_raw_sign(data, int(self._private_key, 16).to_bytes(64, 'big'))
         res = '0x'
         for j in range(3):

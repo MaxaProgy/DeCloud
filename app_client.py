@@ -78,7 +78,7 @@ class AppClient(QMainWindow, ManagerFogNodes):
         layoutFogNodes = QHBoxLayout()
 
         self.fogNodesWidget = QTableWidget()
-        labels = ['Name', 'State']
+        labels = ['Name', 'State', 'Amount']
         self.fogNodesWidget.setColumnCount(len(labels))
         self.fogNodesWidget.setHorizontalHeaderLabels(labels)
         self.fogNodesWidget.verticalHeader().hide()
@@ -268,6 +268,7 @@ class AppClient(QMainWindow, ManagerFogNodes):
                 self.fogNodesWidget.show()
                 no_exist_node = False
                 break
+
         if no_exist_node:  # Create new row
             row = self.fogNodesWidget.rowCount()
             self.fogNodesWidget.setRowCount(row + 1)
@@ -277,6 +278,28 @@ class AppClient(QMainWindow, ManagerFogNodes):
             self.fogNodesWidget.setCurrentCell(row, 0)
             self.fogNodesWidget.setSortingEnabled(True)
         print(f'Node {data["id_fog_node"]} {data["state"]}')
+
+    @staticmethod
+    def amount_format(amount):
+        name_amount_format = ['bEx', 'KbEx', 'MbEx', 'GbEx', 'TbEx', 'PbEx', 'EbEx', 'ZbEx', 'YbEx']
+        cut_format = 0
+        while amount >= 1024:
+            amount /= 1024
+            cut_format += 1
+        return f'{round(amount, 2)} {name_amount_format[cut_format]}'
+
+
+    def on_change_balance(self, data):
+        for i in range(self.fogNodesWidget.rowCount()):
+            if self.fogNodesWidget.item(i, 0).text() == data['id_fog_node']:
+
+                self.fogNodesWidget.setItem(i, 2, QTableWidgetItem(self.amount_format(data['amount'])))
+                self.fogNodesWidget.item(i, 2).setTextAlignment(Qt.AlignRight);
+                self.fogNodesWidget.hide()
+                self.fogNodesWidget.show()
+                break
+
+        print(f'Update balance Node {data["id_fog_node"]} {data["amount"]}')
 
     def start_pool(self):
         try:
