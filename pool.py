@@ -3,7 +3,7 @@ import time
 from multiprocessing import Process
 from blockchain import Blockchain
 from dctp import ServerDCTP, send_status_code
-from utils import exists_path, get_path, POOL_CSM_PORT, POOL_FN_PORT, append_pool_host
+from utils import exists_path, get_path, POOL_CSM_PORT, POOL_FN_PORT, append_pool_host, LoadJsonFile
 from wallet import Wallet
 
 
@@ -12,12 +12,11 @@ class Pool(Process):
         super().__init__()
         if not exists_path(dirs=['data', 'pool'], file='key'):
             self._wallet = Wallet()
-            self._wallet.save_private_key(get_path(dirs=['data', 'pool'], file='key'))
+            self._wallet.save_private_key(dirs=['data', 'pool'], file='key')
             print(f'Create POOL {self._wallet.address}')
 
         else:
-            with open(get_path(dirs=['data', 'pool'], file='key'), 'r') as f:
-                self._wallet = Wallet(f.readline())
+            self._wallet = Wallet(LoadJsonFile(dirs=['data', 'pool'], file='key').as_list()[0])
         self._ip = '127.0.0.1'
         self._port_csm = POOL_CSM_PORT
         self._port_fn = POOL_FN_PORT
@@ -37,6 +36,14 @@ class Pool(Process):
             if not self._blockchain.new_transaction(sender=json['address'], data=json['hash']):
                 return send_status_code(100)
 
+        @server_CSM.method('get_occupied')
+        def get_occupied(json, data):
+            return {'occupied': self._blockchain.get_occupied(json['address'])}
+
+        @server_CSM.method('get_info_object')
+        def get_info_object(json, data):
+            return {'info': self._blockchain.get_info_object(json['address'], json['id_object'])}
+
         server_CSM.start()
 
         server_FN = ServerDCTP(POOL_FN_PORT)
@@ -54,4 +61,3 @@ class Pool(Process):
 
         while True:
             time.sleep(5)
-            # print(self._blockchain.get_now_block_number())

@@ -50,6 +50,7 @@ class ClientDCTP(Thread):
 
     # Устанавливаем соединение
     def run(self):
+
         while True:
             try:
                 for type_connect in self._type_connection:
@@ -179,9 +180,15 @@ class ServerDCTP(Thread):
                 if address_response in self._clients.keys():
                     response = _json.loads(sock.recv(self._clients[address_response]['json']).decode('utf-8'))
                     response['json']['address'] = address_response
-                    response = self._dict_methods_call[response['method']](json=response['json'],
-                                                                           data=sock.recv(
-                                                                               self._clients[address_response]['data']))
+                    data = sock.recv(self._clients[address_response]['data'])
+                    while True:
+                        try:
+                            response = self._dict_methods_call[response['method']](json=response['json'], data=data)
+                            break
+                        except Exception as e:
+                            #print("Error 100", e, response)
+                            time.sleep(0.1)
+
                     if response is None:
                         response = {}
                     response['id_fog_node'] = address_response
@@ -193,9 +200,9 @@ class ServerDCTP(Thread):
                 else:
                     self._clients[address_response] = {'json': int.from_bytes(sock.recv(4), 'big'),
                                                        'data': int.from_bytes(sock.recv(4), 'big')}
-            except:
+            except Exception as e:
                 if id_client in self._workers.keys():
-                    print(f'{id_client} разорвал соединение')
+                    print(f'{id_client} разорвал соединение', e, response)
                     sock.close()
                     self._workers.pop(id_client)
 
@@ -203,7 +210,13 @@ class ServerDCTP(Thread):
 
     def request(self, id_worker, method, data=None):
         # Подготавливаем данные к отправке запроса
-        self._send_request(self._workers[id_worker]['server to client'], {'method': method, 'data': data})
+        while True:
+            try:
+                self._send_request(self._workers[id_worker]['server to client'], {'method': method, 'data': data})
+                break
+            except:
+                time.sleep(0.1)
+
 
     def method(self, name_method):
         # Декоратор. Храним ссылки на функции методов по их названиям

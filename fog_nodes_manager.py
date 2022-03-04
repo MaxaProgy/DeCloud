@@ -1,10 +1,9 @@
-import time
 from multiprocessing import cpu_count
 from multiprocessing import Process
 
 from dctp import ServerDCTP, ClientDCTP
 from fog_node import FogNode
-from utils import get_path
+from utils import LoadJsonFile
 from wallet import Wallet
 
 
@@ -45,12 +44,7 @@ class ManagerFogNodes:
 
         @self._server_fog_nodes.method('current_state_fog_node')
         def current_state_fog_node(json, data):
-            try:
-                while True:
-                    self.on_change_state(json)
-                    break
-            except:
-                time.sleep(0.1)
+            self.on_change_state(json)
 
         @self._server_fog_nodes.method('update_balance_fog_node')
         def update_balance_fog_node(json, data):
@@ -61,7 +55,6 @@ class ManagerFogNodes:
         for cpu in range(cpu_count()):
             worker = WorkerProcess(cpu, self._server_fog_nodes.current_port)
             worker.start()
-        time.sleep(6)
 
     def on_change_state(self, data):
         pass
@@ -70,9 +63,8 @@ class ManagerFogNodes:
         pass
 
     def load_fog_nodes(self):
-        with open(get_path(dirs=['data', 'fog_nodes'], file='key'), 'r') as f:
-            for key in f.readlines():
-                self.add_fog_node(key[:-1])
+        for key in LoadJsonFile(dirs=['data', 'fog_nodes'], file='key').as_list():
+            self.add_fog_node(key)
 
     def add_fog_node(self, private_key=None):
         self._count_fog_nodes += 1

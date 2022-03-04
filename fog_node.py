@@ -4,7 +4,7 @@ import time
 from threading import Thread
 
 from dctp import ClientDCTP
-from utils import get_path, get_pools_host
+from utils import get_pools_host, get_path, exists_path
 from wallet import Wallet
 
 SIZE_REPLICA = 1024 ** 2
@@ -19,10 +19,7 @@ class BaseFogNode:
         self._size_fog_node = 0
         self._id_fog_node = None
         self._all_hash_replicas = []
-
-    @staticmethod
-    def get_path(*args):
-        pass
+        self._main_dir_data = None
 
     def _save_replica(self, replica, random_replica=False):
         if random_replica:
@@ -31,48 +28,46 @@ class BaseFogNode:
             hex_hash = sha3_256(replica).hexdigest()
 
         # находим путь для сохранения разбивая хэш на пары. Создаемм папки и сохраняем файл
-        path_to_dir_file = self.get_path(self._id_fog_node,
-                                         *[hex_hash[i:i + 2] for i in range(0, len(hex_hash) - 2, 2)])
-        path_to_file = os.path.join(path_to_dir_file, hex_hash[-2:])
+        dirs = ['data', self._main_dir_data, self._id_fog_node,
+                *[hex_hash[i:i + 2] for i in range(0, len(hex_hash) - 2, 2)]]
+        file = hex_hash[-2:]
 
-        if not os.path.exists(path_to_dir_file):
-            os.makedirs(path_to_dir_file)
-        if not os.path.isfile(path_to_file):
-            with open(path_to_file, 'wb') as output:
-                output.write(replica)
+        if not exists_path(dirs=dirs, file=file):
+            with open(get_path(dirs=dirs, file=file), 'wb') as f:
+                f.write(replica)
         else:
             pass
             # доработать в будущем проверку, если хэш файла одинаковым, а содержимое файлов разное
 
         # Добавляет в список self._all_hash_replicas хэши блоков
         self._all_hash_replicas.append(hex_hash)
-        self._size_fog_node += os.path.getsize(path_to_file)
+        self._size_fog_node += os.path.getsize(get_path(dirs=dirs, file=file))
 
         return hex_hash
 
     def _load_replica(self, hash):
         # Находим файл по хэшу и возвращаем собержимое файла в виде реплики
-        path_to_dir_file = self.get_path(self._id_fog_node,
-                                         *[hash[i:i + 2] for i in range(0, len(hash) - 2, 2)])
-        path_to_file = os.path.join(path_to_dir_file, hash[-2:])
-        if os.path.exists(path_to_file):
-            with open(path_to_file, 'rb') as f:
+        dirs = ['data', self._main_dir_data, self._id_fog_node,
+                *[hash[i:i + 2] for i in range(0, len(hash) - 2, 2)]]
+        file = hash[-2:]
+        if exists_path(dirs=dirs, file=file):
+            with open(get_path(dirs=dirs, file=file), 'rb') as f:
                 data = f.read()
             if hash != sha3_256(data).hexdigest():
                 self._delete_replica(hash)
-        if not os.path.exists(path_to_file):
+        if not exists_path(dirs=dirs, file=file):
             raise Exception('В будущем дописать, если файла нет то делать запрос в pool')
         return data  # Возвращаем бинарный данные файла
 
     def _delete_replica(self, id_replica):
         # Удаляем файл и пустые папки с названием id_replica
-        path_to_file = [id_replica[i:i + 2] for i in range(0, len(id_replica) - 2, 2)]
+        dirs = [id_replica[i:i + 2] for i in range(0, len(id_replica) - 2, 2)]
         # Удаляем файл с бинарными данными
-        os.remove(self.get_path(self._id_fog_node, *path_to_file, id_replica[-2:]))
+        os.remove(get_path(dirs=['data', self._main_dir_data, self._id_fog_node, *dirs], file=id_replica[-2:]))
         try:
             # Удаляет пустые папки по пути к файлу
-            for i in range(len(path_to_file), 0, -1):
-                path = self.get_path(self._id_fog_node, *path_to_file[:i])
+            for i in range(len(dirs), 0, -1):
+                path = get_path(dirs=['data', self._main_dir_data, self._id_fog_node, *dirs[:i]])
                 self._size_fog_node -= os.path.getsize(path)
                 os.rmdir(path)
 
@@ -90,13 +85,13 @@ class FogNode(BaseFogNode, Thread):
         BaseFogNode.__init__(self)
         Thread.__init__(self)
         self._process_client = process_client
-
+        self._main_dir_data = 'fog_nodes'
 
         if private_key is None:
             # Создаем private_key сами
             # и получаем address
             wallet = Wallet()
-            wallet.save_private_key(get_path(dirs=['data', 'fog_nodes'], file='key'))
+            wallet.save_private_key(dirs=['data', 'fog_nodes'], file='key')
             self._id_fog_node = wallet.address
             self._check_state = 'create'
         else:
@@ -110,18 +105,14 @@ class FogNode(BaseFogNode, Thread):
     def wallet(self):
         return self._wallet
 
-    @staticmethod
-    def get_path(*args):
-        return os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data', 'fog_nodes', *args)
-
     def _create_random_init_replica(self):
         # Создаем 1 блок со случайными данными.
         self._save_replica(os.urandom(SIZE_REPLICA), random_replica=True)
 
     def _load_and_check_replicas(self):
         # Загружаем все данные в Fog Nodes, проверяем их целостность.
-        path = self.get_path(self._id_fog_node)
-        if os.path.exists(path):
+        if exists_path(dirs=['data', self._main_dir_data, self._id_fog_node]):
+            path = get_path(dirs=['data', self._main_dir_data, self._id_fog_node])
             for directory_path, directory_names, file_names in os.walk(path):
                 for file_name in file_names:
                     # Ноходим путь к файлу и сравниваем его с хэшом файла,

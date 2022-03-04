@@ -2,23 +2,22 @@
 from multiprocessing import Process
 from queue import Queue
 import json
-import os
 
 from dctp import ClientDCTP
 from fog_node import BaseFogNode, SIZE_REPLICA
 from flask import Flask, request, jsonify, Response
 
-from utils import get_pools_host
+from utils import get_pools_host, LoadJsonFile, SaveJsonFile
 from wallet import sign_verification
 
 SESSION_TIME_LIFE = 24 * 60 * 60
-from variables import PORT_DISPATCHER_CLIENT_STORAGE
 
 
 class FileExplorer:
     def __init__(self, name, hash):
         self._name = name
         self._hash = hash
+        self._state = False
 
     @property
     def name(self):
@@ -39,6 +38,7 @@ class DirectoryExplorer:
         self._hash = hash
         self._children = []
         self._parent = parent
+        self._state = False
 
     @property
     def name(self):
@@ -71,7 +71,7 @@ class ClientStorageExplorer(BaseFogNode):
 
         self._id_fog_node = address
         # Создание корневной - главной директории
-
+        self._main_dir_data = 'client_storage'
         self._root_dir = DirectoryExplorer(self._id_fog_node, None, None)
 
         self._load_state()
@@ -81,21 +81,18 @@ class ClientStorageExplorer(BaseFogNode):
         return self._root_dir
 
     def _load_state(self):
-        path = self.get_path(self._id_fog_node, 'state.json')
-        if os.path.exists(path):
-            with open(path, 'r') as f:
-                hashes_explorer = json.loads(f.read())
-            for hash in hashes_explorer:  # Проходим по всем
-                info_params_obj = json.loads(self._load_replica(hash))  # Формируем json из бинарных данных файла
-                if len(info_params_obj) == 3:  # Если файл
-                    file = FileExplorer(info_params_obj[1], hash)  # Создаем файл
-                    # Находим папку и добавляем к ней в качестве child - файл
-                    self.find_object_on_hash(info_params_obj[0]).add_child(file)
-                else:  # если папка
-                    parent = self.find_object_on_hash(info_params_obj[0])  # Находим папку
-                    # Добавляем к ней в качестве child - файл
-                    child = DirectoryExplorer(info_params_obj[1], hash, parent)
-                    parent.add_child(child)
+        hashes_explorer = LoadJsonFile(dirs=['data', 'client_storage', self._id_fog_node], file='state.json').as_list()
+        for hash in hashes_explorer:  # Проходим по всем
+            info_params_obj = json.loads(self._load_replica(hash))  # Формируем json из бинарных данных файла
+            if len(info_params_obj) == 3:  # Если файл
+                file = FileExplorer(info_params_obj[1], hash)  # Создаем файл
+                # Находим папку и добавляем к ней в качестве child - файл
+                self.find_object_on_hash(info_params_obj[0]).add_child(file)
+            else:  # если папка
+                parent = self.find_object_on_hash(info_params_obj[0])  # Находим папку
+                # Добавляем к ней в качестве child - файл
+                child = DirectoryExplorer(info_params_obj[1], hash, parent)
+                parent.add_child(child)
 
     def save_state(self):
         from queue import Queue
@@ -109,10 +106,10 @@ class ClientStorageExplorer(BaseFogNode):
                 # сохраняем в спиок хэши-пути к файлам
                 [task_queue.put(child) for child in current_obj.get_children()]
                 hashes_explorer += [child.hash for child in current_obj.get_children()]
-
-        with open(self.get_path(self.id_fog_node, 'state.json'), 'w') as f:
             # Сохраняем в файл все хэши к файлам
-            f.write(json.dumps(hashes_explorer[1:]))  # первый в списке - текущая папка
+            SaveJsonFile(dirs=['data', 'client_storage', self._id_fog_node],
+                         file='state.json',
+                         data=hashes_explorer[1:])  # первый в списке - текущая папка
 
     def find_object_on_hash(self, hash):
         # Находим папку по хэшу
@@ -127,10 +124,6 @@ class ClientStorageExplorer(BaseFogNode):
                 [task_queue.put(child) for child in current_obj.get_children()]
 
         return None
-
-    @staticmethod
-    def get_path(*args):
-        return os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data', 'client_storage', *args)
 
     def make_dir(self, parent, name):
         # Создание папки в файловой системе
@@ -163,25 +156,6 @@ class DispatcherClientStorage(Process):
         Process.__init__(self)
         self._port = port
         self._session_keys = {}
-        path = ClientStorageExplorer.get_path('temp')
-        if not os.path.exists(path):
-            os.makedirs(path)
-
-        ## self.delete_file_queue = Queue()
-        ## self.delete_file_thread = Thread(target=self.delete_file)
-        ## self.delete_file_thread.start()
-
-    ##def delete_file(self):
-    ##    while True:
-    ##        if not self.delete_file_queue.empty():
-    ##            path = self.delete_file_queue.get()
-    ##            while True:
-    ##                try:
-    ##                    os.remove(path)
-    ##                    break
-    ##                except:
-    ##                   sleep(1)
-    ##        sleep(10)
 
     def run(self):
         ip, port_csm, _ = get_pools_host()[0]
@@ -211,7 +185,7 @@ class DispatcherClientStorage(Process):
             hashes = []
             i = 0
             while True:
-                i+=1
+                i += 1
                 chunk = request.stream.read(SIZE_REPLICA)
                 if not chunk:
                     break
@@ -220,12 +194,12 @@ class DispatcherClientStorage(Process):
             chunk = bytes(json.dumps([current_dir.hash, data['file_name'], hashes]), 'utf-8')
             hash_file = client._save_replica(chunk)
             client_pool.request(data['address'], 'send_replica', data=chunk)
-            response = client_pool.request(data['address'], 'commit_replica', json={'hash': hash_file})
+            client_pool.request(data['address'], 'commit_replica', json={'hash': hash_file})
 
             file = FileExplorer(data['file_name'], hash_file)
             current_dir.add_child(file)
             client.save_state()
-            return jsonify(hash_file)
+            return jsonify()
 
         @app.route('/api/make_dir', methods=['GET'])
         def make_dir():
@@ -248,8 +222,10 @@ class DispatcherClientStorage(Process):
             name = data['name']
             if name in [child.name for child in current_dir.get_children() if not child.is_file()]:
                 return jsonify({'error': f'the current object already has the given name {name}'})
-
-            return jsonify(client.make_dir(current_dir, name))
+            hash_dir = client.make_dir(current_dir, name)
+            client_pool.request(data['address'], 'send_replica', data=bytes(json.dumps([current_dir.hash, name]), 'utf-8'))
+            client_pool.request(data['address'], 'commit_replica', json={'hash': hash_dir})
+            return jsonify(hash_dir)
 
         @app.route('/api/get_object', methods=['GET'])
         def get_object():
@@ -279,14 +255,17 @@ class DispatcherClientStorage(Process):
                     parent_hash = cur_obj.parent.hash
                 else:
                     parent_hash = ''
-
-                dct_files_and_directories = {'parent': parent_hash, 'files': [], 'dirs': []}
+                dct_files_and_directories = {'parent': parent_hash, 'files': [], 'dirs': [],
+                                             'occupied': client_pool.request(request.args['address'],
+                                                                             'get_occupied')['occupied']}
                 if not cur_obj == client.root_dir:
                     dct_files_and_directories['dirs'].append({'name': '..', 'id_object': cur_obj.parent.hash})
                 for child in cur_obj.get_children():
-                    dct_files_and_directories[{FileExplorer: 'files', DirectoryExplorer: 'dirs'}[type(child)]] += \
-                        [{'name': child.name, 'id_object': child.hash}]
+                    response = client_pool.request(request.args['address'],
+                                            'get_info_object', json={'id_object': child.hash})
 
+                    dct_files_and_directories[{FileExplorer: 'files', DirectoryExplorer: 'dirs'}[type(child)]] += \
+                        [{'name': child.name, 'id_object': child.hash, 'info': response['info']}]
                 return jsonify(dct_files_and_directories)
 
         app.run(host='127.0.0.1', port=self._port)

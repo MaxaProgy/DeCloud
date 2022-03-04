@@ -3,6 +3,8 @@ import json
 import os
 from py_ecc.secp256k1 import ecdsa_raw_sign, ecdsa_raw_recover, privtopub
 
+from utils import LoadJsonFile, get_path, SaveJsonFile
+
 
 def check_valid_address(address):
     # Проверяем правильность ввода address
@@ -75,10 +77,9 @@ class Wallet:
         # Делаем так, чтобы ключь всегда был одной длины
         return '0' * (128 - len(hex(public_key)[2:])) + hex(public_key)[2:]
 
-    def save_private_key(self, path):
+    def save_private_key(self, dirs, file):
         # Сохраняем private_key в файл
-        with open(path, 'a') as output:
-            output.write(self._private_key + "\n")
+        SaveJsonFile(dirs=dirs, file=file, data=LoadJsonFile(dirs=dirs, file=file).as_list()+[self._private_key])
 
     def sign(self, data):
         """
