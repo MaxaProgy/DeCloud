@@ -1,3 +1,4 @@
+from argparse import ArgumentParser
 from datetime import datetime
 import json
 import os
@@ -18,8 +19,8 @@ from utils import exists_path, LoadJsonFile, SaveJsonFile
 from pool import Pool
 from wallet import Wallet
 from fog_node import SIZE_REPLICA
-from client_storage_manager import DispatcherClientStorage
-from variables import PORT_DISPATCHER_CLIENT_STORAGE
+from clients_manager import DispatcherClientsManager
+from variables import PORT_DISPATCHER_CLIENTS_MANAGER, POOL_FN_PORT, POOL_PORT, POOL_CM_PORT
 
 
 class AppClient(QMainWindow, ManagerFogNodes):
@@ -32,7 +33,7 @@ class AppClient(QMainWindow, ManagerFogNodes):
         self.full_amount = 0
         self.occupied_amount = 0
         self.last_response_hash = 0
-        if exists_path(dirs=['data', 'pool'], file='key'):
+        if exists_path('data/pool/key'):
             self.start_pool()
         self.initUI()
         update_data_thread = Thread(target=self.update_data)
@@ -50,7 +51,7 @@ class AppClient(QMainWindow, ManagerFogNodes):
         tabClientStorages = QFrame()
         layoutClientStorages = QVBoxLayout()
 
-        for key in LoadJsonFile(dirs=['data', 'client_storage'], file='key').as_list():
+        for key in LoadJsonFile('data/clients_manager/key').as_list():
             wallet = Wallet(key)
             if self._current_address_client_storage == '':
                 self._current_address_client_storage = wallet.address
@@ -58,11 +59,11 @@ class AppClient(QMainWindow, ManagerFogNodes):
             self.client_storages[wallet.address] = {'wallet': wallet, 'id_current_dir': None}
 
         layoutAllBalance = QHBoxLayout()
-        self.labelAllBalance = QLabel('Полный баланс: ')
-        self.labelAmount = QLabel()
+        self.labelAllBalanceClient = QLabel('Полный баланс: ')
+        self.labelAmountClient = QLabel()
         layoutAllBalance.addStretch(1)
-        layoutAllBalance.addWidget(self.labelAllBalance)
-        layoutAllBalance.addWidget(self.labelAmount)
+        layoutAllBalance.addWidget(self.labelAllBalanceClient)
+        layoutAllBalance.addWidget(self.labelAmountClient)
 
         layoutOccupiedBalance = QHBoxLayout()
         self.labelOccupiedBalance = QLabel('Использовано: ')
@@ -100,6 +101,16 @@ class AppClient(QMainWindow, ManagerFogNodes):
         # -----------------------------
         tabPool = QFrame()
         layoutTabPool = QVBoxLayout()
+
+        layoutAllBalancePool = QHBoxLayout()
+        self.labelAllBalancePool = QLabel('Полный баланс: ')
+        self.labelAmountPool = QLabel(self.amount_format(0))
+        layoutAllBalancePool.addStretch(1)
+        layoutAllBalancePool.addWidget(self.labelAllBalancePool)
+        layoutAllBalancePool.addWidget(self.labelAmountPool)
+
+        layoutTabPool.addLayout(layoutAllBalancePool)
+        layoutTabPool.addStretch(1)
         tabPool.setLayout(layoutTabPool)
 
         # -----------------------------
@@ -120,7 +131,7 @@ class AppClient(QMainWindow, ManagerFogNodes):
         self.fogNodesWidget.setColumnHidden(3, True)
         self.fogNodesWidget.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.fogNodesWidget.setSelectionMode(QAbstractItemView.SingleSelection)
-        for key in LoadJsonFile(dirs=['data', 'fog_nodes'], file='key').as_list():
+        for key in LoadJsonFile('data/fog_nodes/key').as_list():
             wallet = Wallet(key)
             address = wallet.address
             row = self.fogNodesWidget.rowCount()
@@ -151,7 +162,7 @@ class AppClient(QMainWindow, ManagerFogNodes):
         if self._current_address_client_storage:
             self.setWindowTitle("DeCloud  —  " + self._current_address_client_storage)
 
-        if exists_path(dirs=['data', 'pool'], file='key'):
+        if exists_path('data/pool/key'):
             self.createPoolAction.setEnabled(False)
 
     def closeEvent(self, event):
@@ -233,7 +244,7 @@ class AppClient(QMainWindow, ManagerFogNodes):
                 self.setWindowTitle("DeCloud")
         # Fog nodes
         elif self.tab.currentIndex() == 2:
-            self.setWindowTitle("DeCloud  —  " + self._current_address_client_storage)
+            self.setWindowTitle("DeCloud")
             self.fogNodesWidget.setFocus()
             fileMenu.addAction(self.createNodeAction)
 
@@ -280,7 +291,7 @@ class AppClient(QMainWindow, ManagerFogNodes):
         self._current_address_client_storage = address
         for i in range(self.fogNodesWidget.rowCount()):
             if self.fogNodesWidget.item(i, 0).text() == address:
-                self.labelAmount.setText(self.fogNodesWidget.item(i, 2).text())
+                self.labelAmountClient.setText(self.fogNodesWidget.item(i, 2).text())
                 self.full_amount = int(self.fogNodesWidget.item(i, 3).text())
                 self.save_params()
                 break
@@ -288,17 +299,20 @@ class AppClient(QMainWindow, ManagerFogNodes):
     def update_data(self):
         while True:
             try:
+                self.labelAmountPool.setText(self.amount_format(
+                requests.get(f'http://127.0.0.1:{PORT_DISPATCHER_CLIENTS_MANAGER}/'
+                             f'api/get_pool_balance/{self._address_pool}').json()['amount']))
+
                 self.show_current_dir()
-                time.sleep(20)
             except:
-                time.sleep(1)
+                pass
+            time.sleep(15)
 
     def save_params(self):
-        SaveJsonFile(dirs=['data', 'client_storage'], file='save_params', data=self._current_address_client_storage)
+        SaveJsonFile('data/clients_manager/save_params', data=self._current_address_client_storage)
 
     def load_params(self):
-        self._current_address_client_storage = LoadJsonFile(dirs=['data', 'client_storage'],
-                                                            file='save_params').as_string()
+        self._current_address_client_storage = LoadJsonFile('data/clients_manager/save_params').as_string()
 
     def get_current_client_wallet(self):
         # Получить кошелек
@@ -349,7 +363,7 @@ class AppClient(QMainWindow, ManagerFogNodes):
         for i in range(self.fogNodesWidget.rowCount()):
             if self.fogNodesWidget.item(i, 0).text() == data['id_fog_node']:
                 if self._current_address_client_storage == data['id_fog_node']:
-                    self.labelAmount.setText(self.amount_format(data["amount"]))
+                    self.labelAmountClient.setText(self.amount_format(data["amount"]))
                     self.full_amount = data["amount"]
                 self.fogNodesWidget.setItem(i, 2, QTableWidgetItem(self.amount_format(data['amount'])))
                 self.fogNodesWidget.setItem(i, 3, QTableWidgetItem(str(data['amount'])))
@@ -358,15 +372,14 @@ class AppClient(QMainWindow, ManagerFogNodes):
                 self.fogNodesWidget.show()
                 break
 
-        print(f'Update balance Node {data["id_fog_node"]} {data["amount"]}')
-
     def start_pool(self):
         try:
             self.pool = Pool()
             self.pool.start()
         except Exception as e:
             print(e)
-        self._address_pool = Wallet(LoadJsonFile(dirs=['data', 'pool'], file='key').as_list()[0]).address
+        self._address_pool = Wallet(LoadJsonFile('data/pool/key').as_list()[0]).address
+        requests.get(f'http://127.0.0.1:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/register_pool/{self._address_pool}')
 
     def current_change_client_storage(self, row):
         self.createClientStorageAction.setEnabled(
@@ -383,12 +396,12 @@ class AppClient(QMainWindow, ManagerFogNodes):
 
     def create_client_storage(self):
         address = self.fogNodesWidget.item(self.fogNodesWidget.currentRow(), 0).text()
-        for key in LoadJsonFile(dirs=['data', 'fog_nodes'], file='key').as_list():
+        for key in LoadJsonFile('data/fog_nodes/key').as_list():
             wallet = Wallet(key)
             if wallet.address == address:
                 self.client_storages[address] = {'wallet': Wallet(key),
                                                  'id_current_dir': None}
-                self.client_storages[address]['wallet'].save_private_key(dirs=['data', 'client_storage'], file='key')
+                self.client_storages[address]['wallet'].save_private_key('data/clients_manager/key')
                 self.fogNodesWidget.item(self.fogNodesWidget.currentRow(), 0).setForeground(QColor('green'))
                 self.setWindowTitle("DeCloud  —  " + address)
                 self.set_current_address_client_storage(address)
@@ -421,7 +434,7 @@ class AppClient(QMainWindow, ManagerFogNodes):
                     if id_current_dir:
                         data['id_current_dir'] = id_current_dir
                     data = self.signed_data_request(data)
-                    response = requests.get(f'http://127.0.0.1:{PORT_DISPATCHER_CLIENT_STORAGE}/api/make_dir',
+                    response = requests.get(f'http://127.0.0.1:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/make_dir',
                                             json=data).json()
                     if 'error' in response:
                         QMessageBox.critical(self, "Error", response['error'], QMessageBox.Ok)
@@ -454,7 +467,7 @@ class AppClient(QMainWindow, ManagerFogNodes):
                     params['id_current_dir'] = id_current_dir
 
                 params = self.signed_data_request(params)
-                response = requests.post(f'http://127.0.0.1:{PORT_DISPATCHER_CLIENT_STORAGE}/api/save_file',
+                response = requests.post(f'http://127.0.0.1:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/save_file',
                                          params=params,
                                          data=self.chunking(path)).json()
                 if 'error' in response:
@@ -485,7 +498,7 @@ class AppClient(QMainWindow, ManagerFogNodes):
             data['id_object'] = self.current_id_dir
         while True:
             try:
-                response = requests.get(f'http://127.0.0.1:{PORT_DISPATCHER_CLIENT_STORAGE}/api/get_object',
+                response = requests.get(f'http://127.0.0.1:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/get_object',
                                         params=data).json()
                 break
             except:
@@ -497,7 +510,6 @@ class AppClient(QMainWindow, ManagerFogNodes):
 
         self.occupied_amount = response['occupied']
         self.labelOccupiedAmount.setText(self.amount_format(self.occupied_amount))
-        print(response)
         self.clientStoragesExplorer.setRowCount(sum([(len(response[type])) for type in ['dirs', 'files']]))
         row = 0
         for type in ['dirs', 'files']:
@@ -535,7 +547,7 @@ class AppClient(QMainWindow, ManagerFogNodes):
             # Передаем id объекта, если создаем новую директорию или открываем файл
             data['id_object'] = id_obj
 
-        response = requests.get(f'http://127.0.0.1:{PORT_DISPATCHER_CLIENT_STORAGE}/api/get_object',
+        response = requests.get(f'http://127.0.0.1:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/get_object',
                                 params=data)
 
         # Сохраняем во временные файлы и открываем
@@ -548,8 +560,18 @@ class AppClient(QMainWindow, ManagerFogNodes):
 
 
 if __name__ == '__main__':
+    """
+    parser = ArgumentParser()
+    parser.add_argument('-pd', '--port_dispatcher', default=PORT_DISPATCHER_CLIENTS_MANAGER, type=int,
+                        help='port to listen dispatcher client storage')
+    parser.add_argument('-ppl', '--port_pool',  default=POOL_PORT, type=int, help='port to listen pool')
+    parser.add_argument('-pcm', '--port_cm',  default=POOL_CM_PORT, type=int,
+                        help='port to listen pool clients manager')
+    parser.add_argument('-pfn', '--port_fn',  default=POOL_FN_PORT, type=int, help='port to listen pool fog nodes')
+    """
     app = QApplication(sys.argv)
-    dispatcher = DispatcherClientStorage(PORT_DISPATCHER_CLIENT_STORAGE)
+
+    dispatcher = DispatcherClientsManager(PORT_DISPATCHER_CLIENTS_MANAGER)
     dispatcher.start()
 
     client_manager = AppClient()

@@ -2,14 +2,13 @@ from _pysha3 import keccak_256 as sha3_256
 import os
 import time
 from threading import Thread
-
 from dctp import ClientDCTP
-from utils import get_pools_host, get_path, exists_path
+from utils import get_pools_host, get_path, exists_path, get_size_file
 from wallet import Wallet
 
 SIZE_REPLICA = 1024 ** 2
 COUNT_REPLICAS_IN_FOG_NODE = 100  # 30 * 1024
-COUNT_REPLICAS_IN_CLIENT_STORAGES = 200
+COUNT_REPLICAS_IN_CLIENTS_STORAGES = 200
 
 SLICE_FOR_RANDOM_HASH = 10
 
@@ -28,12 +27,11 @@ class BaseFogNode:
             hex_hash = sha3_256(replica).hexdigest()
 
         # находим путь для сохранения разбивая хэш на пары. Создаемм папки и сохраняем файл
-        dirs = ['data', self._main_dir_data, self._id_fog_node,
-                *[hex_hash[i:i + 2] for i in range(0, len(hex_hash) - 2, 2)]]
-        file = hex_hash[-2:]
+        path = f'data/{self._main_dir_data}/{self._id_fog_node}/' \
+               f'{"/".join([hex_hash[i:i + 2] for i in range(0, len(hex_hash), 2)])}'
 
-        if not exists_path(dirs=dirs, file=file):
-            with open(get_path(dirs=dirs, file=file), 'wb') as f:
+        if not exists_path(path):
+            with open(get_path(path), 'wb') as f:
                 f.write(replica)
         else:
             pass
@@ -41,21 +39,20 @@ class BaseFogNode:
 
         # Добавляет в список self._all_hash_replicas хэши блоков
         self._all_hash_replicas.append(hex_hash)
-        self._size_fog_node += os.path.getsize(get_path(dirs=dirs, file=file))
+        self._size_fog_node += get_size_file(path)
 
         return hex_hash
 
     def _load_replica(self, hash):
         # Находим файл по хэшу и возвращаем собержимое файла в виде реплики
-        dirs = ['data', self._main_dir_data, self._id_fog_node,
-                *[hash[i:i + 2] for i in range(0, len(hash) - 2, 2)]]
-        file = hash[-2:]
-        if exists_path(dirs=dirs, file=file):
-            with open(get_path(dirs=dirs, file=file), 'rb') as f:
+        path = f'data/{self._main_dir_data}/{self._id_fog_node}/' \
+               f'{"/".join([hash[i:i + 2] for i in range(0, len(hash), 2)])}'
+        if exists_path(path):
+            with open(get_path(path), 'rb') as f:
                 data = f.read()
             if hash != sha3_256(data).hexdigest():
                 self._delete_replica(hash)
-        if not exists_path(dirs=dirs, file=file):
+        if not exists_path(path):
             raise Exception('В будущем дописать, если файла нет то делать запрос в pool')
         return data  # Возвращаем бинарный данные файла
 
@@ -63,14 +60,13 @@ class BaseFogNode:
         # Удаляем файл и пустые папки с названием id_replica
         dirs = [id_replica[i:i + 2] for i in range(0, len(id_replica) - 2, 2)]
         # Удаляем файл с бинарными данными
-        os.remove(get_path(dirs=['data', self._main_dir_data, self._id_fog_node, *dirs], file=id_replica[-2:]))
+        os.remove(get_path(f'data/{self._main_dir_data}/{self._id_fog_node}/{"/".join(dirs)}/{id_replica[-2:]}'))
         try:
             # Удаляет пустые папки по пути к файлу
             for i in range(len(dirs), 0, -1):
-                path = get_path(dirs=['data', self._main_dir_data, self._id_fog_node, *dirs[:i]])
-                self._size_fog_node -= os.path.getsize(path)
-                os.rmdir(path)
-
+                path = f'data/{self._main_dir_data}/{self._id_fog_node}/{"/".join(dirs[:i])}/'
+                self._size_fog_node -= get_size_file(path)
+                os.rmdir(get_path(path))
         except:
             # Если папка не пустая, то срабатывает исключение и папка не удаляется
             pass
@@ -91,7 +87,7 @@ class FogNode(BaseFogNode, Thread):
             # Создаем private_key сами
             # и получаем address
             wallet = Wallet()
-            wallet.save_private_key(dirs=['data', 'fog_nodes'], file='key')
+            wallet.save_private_key('data/fog_nodes/key')
             self._id_fog_node = wallet.address
             self._check_state = 'create'
         else:
@@ -111,18 +107,19 @@ class FogNode(BaseFogNode, Thread):
 
     def _load_and_check_replicas(self):
         # Загружаем все данные в Fog Nodes, проверяем их целостность.
-        if exists_path(dirs=['data', self._main_dir_data, self._id_fog_node]):
-            path = get_path(dirs=['data', self._main_dir_data, self._id_fog_node])
+        if exists_path(f'data/{self._main_dir_data}/{self._id_fog_node}/'):
+            path = get_path(f'data/{self._main_dir_data}/{self._id_fog_node}/')
             for directory_path, directory_names, file_names in os.walk(path):
                 for file_name in file_names:
                     # Ноходим путь к файлу и сравниваем его с хэшом файла,
                     # проверяем в блокчейне существование данного хэша,
                     # в противном случаем удалем файл
-                    hash_replica = ''.join(directory_path[len(path) + 1:].split('\\')) + file_name
+                    hash_replica = ''.join(directory_path[len(path):].split('\\')) + file_name
                     file = open(os.path.join(directory_path, file_name), 'rb').read()
                     if sha3_256(file).hexdigest()[-len(hash_replica):] == hash_replica and \
-                            (len(hash_replica) == SLICE_FOR_RANDOM_HASH or (len(hash_replica) == 64)) :
+                            (len(hash_replica) == SLICE_FOR_RANDOM_HASH or (len(hash_replica) == 64)):
                         self._all_hash_replicas.append(hash_replica)
+                        #self._size_fog_node += os.path.getsize(os.path.join(directory_path, file_name))
                     else:
                         self._delete_replica(hash_replica)
 
@@ -135,7 +132,8 @@ class FogNode(BaseFogNode, Thread):
         return self._pool_client
 
     def run(self):
-        ip, _, port_fn = get_pools_host()[0]
+        ip, _, _, port_fn = [item for key, item in get_pools_host().items()][0]
+
         self._pool_client = ClientDCTP(self.wallet.address, ip, port_fn)
 
         @self._pool_client.method('update_balance')
@@ -164,10 +162,15 @@ class FogNode(BaseFogNode, Thread):
             while COUNT_REPLICAS_IN_FOG_NODE * SIZE_REPLICA - self._size_fog_node >= SIZE_REPLICA:
                 self._create_random_init_replica()
 
-        self._process_client.request(self._id_fog_node, 'current_state_fog_node',
-                                     json={'state': 'ready', 'id_fog_node': self._id_fog_node})
+        if self._pool_client.is_alive():
+            self._process_client.request(self._id_fog_node, 'current_state_fog_node',
+                                         json={'state': 'ready', 'id_fog_node': self._id_fog_node})
 
-        self._process_client.request(self._id_fog_node, 'update_balance_fog_node',
-                                     json=self._pool_client.request(self._id_fog_node, 'get_balance'))
+            self._process_client.request(self._id_fog_node, 'update_balance_fog_node',
+                                         json=self._pool_client.request(self._id_fog_node, 'get_balance'))
+        else:
+            self._process_client.request(self._id_fog_node, 'current_state_fog_node',
+                                         json={'state': 'error', 'id_fog_node': self._id_fog_node})
+
         while True:
             time.sleep(10)

@@ -2,13 +2,11 @@
 from multiprocessing import Process
 from queue import Queue
 import json
-
 from dctp import ClientDCTP
 from fog_node import BaseFogNode, SIZE_REPLICA
 from flask import Flask, request, jsonify, Response
-
 from utils import get_pools_host, LoadJsonFile, SaveJsonFile
-from wallet import sign_verification
+from wallet import Wallet
 
 SESSION_TIME_LIFE = 24 * 60 * 60
 
@@ -71,7 +69,7 @@ class ClientStorageExplorer(BaseFogNode):
 
         self._id_fog_node = address
         # Создание корневной - главной директории
-        self._main_dir_data = 'client_storage'
+        self._main_dir_data = 'clients_manager'
         self._root_dir = DirectoryExplorer(self._id_fog_node, None, None)
 
         self._load_state()
@@ -81,7 +79,7 @@ class ClientStorageExplorer(BaseFogNode):
         return self._root_dir
 
     def _load_state(self):
-        hashes_explorer = LoadJsonFile(dirs=['data', 'client_storage', self._id_fog_node], file='state.json').as_list()
+        hashes_explorer = LoadJsonFile(path=f'data/clients_manager/{self._id_fog_node}/state.json').as_list()
         for hash in hashes_explorer:  # Проходим по всем
             info_params_obj = json.loads(self._load_replica(hash))  # Формируем json из бинарных данных файла
             if len(info_params_obj) == 3:  # Если файл
@@ -107,8 +105,7 @@ class ClientStorageExplorer(BaseFogNode):
                 [task_queue.put(child) for child in current_obj.get_children()]
                 hashes_explorer += [child.hash for child in current_obj.get_children()]
             # Сохраняем в файл все хэши к файлам
-            SaveJsonFile(dirs=['data', 'client_storage', self._id_fog_node],
-                         file='state.json',
+            SaveJsonFile(path=f'data/clients_manager/{self._id_fog_node}/state.json',
                          data=hashes_explorer[1:])  # первый в списке - текущая папка
 
     def find_object_on_hash(self, hash):
@@ -151,18 +148,35 @@ class ClientStorageExplorer(BaseFogNode):
         return b''.join([self._load_replica(hash) for hash in hashes])
 
 
-class DispatcherClientStorage(Process):
+class DispatcherClientsManager(Process):
     def __init__(self, port):
         Process.__init__(self)
         self._port = port
         self._session_keys = {}
+        self._clients = LoadJsonFile('data/pool/state_pool').as_dict()
 
     def run(self):
-        ip, port_csm, _ = get_pools_host()[0]
-        client_pool = ClientDCTP('CLIENTS STORAGE MANAGER', ip, port_csm)
+        ip, _, port_cm, _ = [item for _, item in get_pools_host().items()][0]
+        client_pool = ClientDCTP(Wallet().address, ip, port_cm)
+
+        @client_pool.method('update_balance_pool')
+        def update_balance_pool(data):
+            self._clients[data['id_client']] = {'amount': data['amount']}
+            SaveJsonFile('data/pool/state_pool', self._clients)
+
         client_pool.start()
 
+
         app = Flask(__name__)
+
+        @app.route('/api/get_pool_balance/<id_client>', methods=['GET'])
+        def get_pool_balance(id_client):
+            return jsonify(self._clients.get(id_client, {'amount': 0}))
+
+        @app.route('/api/register_pool/<address>', methods=['GET'])
+        def register_pool(address):
+            client_pool.request(address, method="register_pool")
+            return jsonify()
 
         @app.route('/api/save_file', methods=['POST'])
         def save_file():
@@ -171,7 +185,7 @@ class DispatcherClientStorage(Process):
             if not all([key in data.keys() for key in ['address', 'public_key', 'file_name', 'sign']]):
                 return jsonify({'error': 'required parameters are not specified: public_key, file, sign'})
             sign = data.pop('sign')
-            if not sign_verification(data=data, sign=sign, public_key=data['public_key']):
+            if not Wallet.sign_verification(data=data, sign=sign, public_key=data['public_key']):
                 return jsonify({'error': 'signature is not valid'})
 
             client = ClientStorageExplorer(data['address'])
@@ -208,7 +222,7 @@ class DispatcherClientStorage(Process):
                 return jsonify({'error': 'required parameters are not specified: public_key, name, sign'})
 
             sign = data.pop('sign')
-            if not sign_verification(data=data, sign=sign, public_key=data['public_key']):
+            if not Wallet.sign_verification(data=data, sign=sign, public_key=data['public_key']):
                 return jsonify({'error': 'signature is not valid'})
 
             if data['name'] == '..' or '/' in data['name']:
@@ -223,7 +237,8 @@ class DispatcherClientStorage(Process):
             if name in [child.name for child in current_dir.get_children() if not child.is_file()]:
                 return jsonify({'error': f'the current object already has the given name {name}'})
             hash_dir = client.make_dir(current_dir, name)
-            client_pool.request(data['address'], 'send_replica', data=bytes(json.dumps([current_dir.hash, name]), 'utf-8'))
+            client_pool.request(data['address'], 'send_replica',
+                                data=bytes(json.dumps([current_dir.hash, name]), 'utf-8'))
             client_pool.request(data['address'], 'commit_replica', json={'hash': hash_dir})
             return jsonify(hash_dir)
 
@@ -262,10 +277,10 @@ class DispatcherClientStorage(Process):
                     dct_files_and_directories['dirs'].append({'name': '..', 'id_object': cur_obj.parent.hash})
                 for child in cur_obj.get_children():
                     response = client_pool.request(request.args['address'],
-                                            'get_info_object', json={'id_object': child.hash})
+                                                   'get_info_object', json={'id_object': child.hash})
 
                     dct_files_and_directories[{FileExplorer: 'files', DirectoryExplorer: 'dirs'}[type(child)]] += \
                         [{'name': child.name, 'id_object': child.hash, 'info': response['info']}]
                 return jsonify(dct_files_and_directories)
 
-        app.run(host='127.0.0.1', port=self._port)
+        app.run(host='0.0.0.0', port=self._port)

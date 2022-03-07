@@ -1,18 +1,25 @@
 import os
 import json
-from variables import POOL_CSM_PORT, POOL_FN_PORT
+
+from variables import POOL_CM_PORT, POOL_FN_PORT, POOL_ROOT_IP, POOL_PORT
 from shutil import copyfile
 
 ERROR_VIEW = True
 INFO_VIEW = True
-POOL_ROOT_IP = '127.0.0.1'
+WARNING_VIEW = True
 
+def get_path(path: str) -> str:
+    file = ''
+    is_file = path[-1] != '/'
+    dirs = path.split('/')
+    if is_file:
+        file = dirs[-1]
+        dirs = dirs[:-1]
 
-def get_path(dirs, file=None):
-    path = os.path.join(os.path.dirname(os.path.realpath(__file__)), *dirs)
+    path = os.path.join(os.path.abspath(os.curdir), *dirs)
     if not os.path.exists(path):
         os.makedirs(path)
-    if file:
+    if is_file:
         path = os.path.join(path, file)
         if not os.path.exists(path):
             with open(path, 'w') as f:
@@ -20,36 +27,31 @@ def get_path(dirs, file=None):
     return path
 
 
-def make_dirs(*args):
-    get_path(dirs=args)
+def exists_path(path: str) -> bool:
+    return os.path.exists(os.path.join(os.path.abspath(os.curdir), *path.split('/')))
 
 
-def exists_path(dirs, file=None):
-    if file:
-        return os.path.exists(os.path.join(os.path.dirname(os.path.realpath(__file__)), *dirs, file))
-    return os.path.exists(os.path.join(os.path.dirname(os.path.realpath(__file__)), *dirs))
-
-
-def get_size_file(dirs, file):
-    return os.path.getsize(get_path(dirs=dirs, file=file))
+def get_size_file(path: str) -> int:
+    return os.path.getsize(get_path(path))
 
 
 def get_pools_address():
-    return list(LoadJsonFile(dirs=['data', 'pool'], file='pools_host').as_dict().keys())
+    return list(LoadJsonFile('data/pool/pools_host').as_dict().keys())
 
+def get_my_ip():
+    return '127.0.0.1'
 
 def get_pools_host():
-    pools = LoadJsonFile(dirs=['data', 'pool'], file='pools_host').as_dict()
-    if pools:
-        return [(pools[key]) for key in pools]
-    else:
-        return [(POOL_ROOT_IP, POOL_CSM_PORT, POOL_FN_PORT)]
+    data = LoadJsonFile('data/pool/pools_host').as_dict()
+    if not data:
+        return {"": (POOL_ROOT_IP, POOL_PORT, POOL_CM_PORT, POOL_FN_PORT)}
+    return data
 
 
-def append_pool_host(name, ip, port_csm, port_fn):
-    pools = LoadJsonFile(dirs=['data', 'pool'], file='pools_host').as_dict()
-    pools[name] = (ip, port_csm, port_fn)
-    SaveJsonFile(dirs=['data', 'pool'], file='pools_host', data=pools)
+def append_pool_host(name, ip, port_pool, port_cm, port_fn):
+    pools = LoadJsonFile('data/pool/pools_host').as_dict()
+    pools[name] = (ip, port_pool, port_cm, port_fn)
+    SaveJsonFile('data/pool/pools_host', data=pools)
 
 
 def print_error(*args):
@@ -61,35 +63,41 @@ def print_info(*args):
     if INFO_VIEW:
         print(*args)
 
+def print_warning(*args):
+    if WARNING_VIEW:
+        print(*args)
+
 
 class SaveJsonFile:
-    def __init__(self, dirs: list, file: str, data):
-        self._dirs = dirs
-        self._file = file
-        path = get_path(dirs=dirs, file=file)
+    # Сохранение в файлы
+    def __init__(self, path: str, data):
+        path = get_path(path)
+        # Сначала сохраняем в файл tmp (обновляем предыдущую версию)
         with open(path + '.tmp', 'w') as f:
             f.write(json.dumps(data))
         copyfile(path + '.tmp', path)
-        #os.remove(path + '.tmp')
+        os.remove(path + '.tmp')
 
 
 class LoadJsonFile:
-    def __init__(self, dirs: list, file: str):
-        self._dirs = dirs
-        self._file = file
-        if exists_path(dirs=dirs, file=file):
+    # Загрузка из файлов
+    def __init__(self, path: str):
+        if exists_path(path):
             while True:
-                path = get_path(dirs=dirs, file=file)
+                path_rebuild = get_path(path)
                 try:
-                    with open(path, 'r') as f:
-                        self._data = json.loads(f.read())
+                    with open(path_rebuild, 'r') as f:
+                        self._data = json.loads(f.read())  # Выдает ошибку, если некорректный фалй
                     break
                 except:
-                    if exists_path(dirs=dirs, file=file + '.tmp'):
-                        copyfile(path + '.tmp', path)
-                        os.remove(path + '.tmp')
+                    # Если файл битый(при прощлой записи программа оборвалсь на записи файла),
+                    # то загружаем данные из прошлой версии tmp
+                    if exists_path(path + '.tmp'):
+                        copyfile(path_rebuild + '.tmp', path_rebuild)
+                        os.remove(path_rebuild + '.tmp')
                     else:
-                        raise Exception(f'File {path} is damaged')
+                        # Если прошлой версии tmp нет - выдаем ошибку
+                        raise Exception(f'File {path_rebuild} is damaged')
         else:
             self._data = None
 
@@ -127,3 +135,22 @@ class LoadJsonFile:
         elif self._data is None:
             return float(0)
         raise Exception('Object is not float')
+
+
+class DispatcherSaveFiles:
+    def __init__(self):
+        self._tasks = set()
+
+    def add(self, path, data):
+        self._tasks.add(path)
+        # Сначала сохраняем в файл tmp (обновляем предыдущую версию)
+        with open(get_path(path) + '.tmp', 'w') as f:
+            f.write(json.dumps(data))
+
+    def commit(self):
+        for path in self._tasks:
+            path_rebuild = get_path(path)
+            # В случае удачного сохранения в tmp - копируем tmp в основной
+            copyfile(path_rebuild + '.tmp', path_rebuild)
+            os.remove(path_rebuild + '.tmp')
+        self._tasks = set()

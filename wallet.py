@@ -3,29 +3,7 @@ import json
 import os
 from py_ecc.secp256k1 import ecdsa_raw_sign, ecdsa_raw_recover, privtopub
 
-from utils import LoadJsonFile, get_path, SaveJsonFile
-
-
-def check_valid_address(address):
-    # Проверяем правильность ввода address
-    return address == Wallet._address_check_sum(address)
-
-
-def sign_verification(data, sign, public_key):
-    """
-    Recovers the owner's public key using the document and its signature
-    :param    data: data transaction
-    :param    sign: signatura data transaction
-    :return       : public key owner this document
-    """
-
-    sign = (int(sign[0:4], 16), int(sign[4:68], 16), int(sign[68:], 16),)
-    data = sha3_256(bytes(json.dumps(data), 'utf-8')).digest()
-    pub = ecdsa_raw_recover(data, sign)
-    pub = pub[0].to_bytes(32, 'big') + pub[1].to_bytes(32, 'big')
-    pub = int.from_bytes(pub, 'big')
-    pub = ('0' * (128 - len(hex(pub)[2:])) + hex(pub)[2:])
-    return pub == public_key
+from utils import LoadJsonFile, SaveJsonFile
 
 
 class Wallet:
@@ -38,10 +16,10 @@ class Wallet:
     def generate_private_key(self):
         # Создание private_key
         # Формируем случайный набор данных и находим от него хэш = private_key
-        self._private_key = sha3_256(bytes(''.join([os.urandom(64).hex() for i in range(100)]), 'utf-8')).hexdigest()
+        self._private_key = sha3_256(bytes(''.join([os.urandom(64).hex() for _ in range(100)]), 'utf-8')).hexdigest()
 
     @staticmethod
-    def _address_check_sum(address):
+    def address_build_checksum(address):
         # Формируем address по следующему условию:
         # Если каждый 4 символ в address буква от a до f, то меняем их регистр с lower на upper
         address = address.lower()
@@ -55,8 +33,32 @@ class Wallet:
                 res += address[i]
         return res
 
+    @staticmethod
+    def check_valid_address(address):
+        # Проверяем правильность ввода address
+        return address == Wallet.address_build_checksum(address)
+
+    @staticmethod
+    def sign_verification(data, sign, public_key):
+        """
+        Recovers the owner's public key using the document and its signature
+        :param    data: data transaction
+        :param    sign: signatura data transaction
+        :return       : public key owner this document
+        """
+
+        sign = (int(sign[0:4], 16), int(sign[4:68], 16), int(sign[68:], 16),)
+        data = sha3_256(bytes(json.dumps(data), 'utf-8')).digest()
+        pub = ecdsa_raw_recover(data, sign)
+        pub = pub[0].to_bytes(32, 'big') + pub[1].to_bytes(32, 'big')
+        pub = int.from_bytes(pub, 'big')
+        pub = ('0' * (128 - len(hex(pub)[2:])) + hex(pub)[2:])
+        return pub == public_key
+
+
+
     def _pub_to_address(self, public_key):
-        return self._address_check_sum(sha3_256(bytes(public_key, 'utf-8')).hexdigest()[-40:])
+        return self.address_build_checksum(sha3_256(bytes(public_key, 'utf-8')).hexdigest()[-40:])
 
     @property
     def address(self):
@@ -77,9 +79,9 @@ class Wallet:
         # Делаем так, чтобы ключь всегда был одной длины
         return '0' * (128 - len(hex(public_key)[2:])) + hex(public_key)[2:]
 
-    def save_private_key(self, dirs, file):
+    def save_private_key(self, path):
         # Сохраняем private_key в файл
-        SaveJsonFile(dirs=dirs, file=file, data=LoadJsonFile(dirs=dirs, file=file).as_list()+[self._private_key])
+        SaveJsonFile(path=path, data=LoadJsonFile(path=path).as_list()+[self._private_key])
 
     def sign(self, data):
         """

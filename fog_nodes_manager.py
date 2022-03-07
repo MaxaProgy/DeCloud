@@ -1,6 +1,4 @@
-from multiprocessing import cpu_count
-from multiprocessing import Process
-
+from multiprocessing import cpu_count, Process
 from dctp import ServerDCTP, ClientDCTP
 from fog_node import FogNode
 from utils import LoadJsonFile
@@ -63,7 +61,7 @@ class ManagerFogNodes:
         pass
 
     def load_fog_nodes(self):
-        for key in LoadJsonFile(dirs=['data', 'fog_nodes'], file='key').as_list():
+        for key in LoadJsonFile('data/fog_nodes/key').as_list():
             self.add_fog_node(key)
 
     def add_fog_node(self, private_key=None):
