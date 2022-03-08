@@ -53,6 +53,10 @@ class ClientDCTP(Thread):
         sock.send(len(request).to_bytes(4, "big"))
         sock.send(bytes(request, 'utf-8'))
 
+    def stop(self):
+        self._stoping = True
+        self._socks = None
+
     # Устанавливаем соединение
     def run(self):
         while not self._stoping:
@@ -75,6 +79,7 @@ class ClientDCTP(Thread):
                 print(f'Нет соединения {self._worker_name}.')
                 time.sleep(1)
 
+        print_info(f'{self._worker_name} is stoping')
 
 
     def request(self, id_fog_node, method, data=b'', json={}):
@@ -98,9 +103,10 @@ class ClientDCTP(Thread):
             response = self._receive_request(self, self._socks['server to client'])
 
             # Если произошел сброс соединения
-            if response is None:
-                print(f'Нет соединения {self._worker_name}.')
-                time.sleep(0.1)
+            if not response:
+                if not self._stoping:
+                    print(f'Нет соединения {self._worker_name}.')
+                    time.sleep(0.1)
                 break
 
             # Если в запросе от сервера пришел error

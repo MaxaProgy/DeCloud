@@ -6,6 +6,7 @@ from dctp import ClientDCTP
 from fog_node import BaseFogNode, SIZE_REPLICA
 from flask import Flask, request, jsonify, Response
 from utils import get_pools_host, LoadJsonFile, SaveJsonFile
+from variables import POOL_PORT, POOL_CM_PORT, POOL_ROOT_IP
 from wallet import Wallet
 
 SESSION_TIME_LIFE = 24 * 60 * 60
@@ -156,7 +157,11 @@ class DispatcherClientsManager(Process):
         self._clients = LoadJsonFile('data/pool/state_pool').as_dict()
 
     def run(self):
-        ip, _, port_cm, _ = [item for _, item in get_pools_host().items()][0]
+        pools = get_pools_host('data/pool/pools_host')
+        if pools:
+            ip, _, port_cm, _ = [item for _, item in pools.items()][0]
+        else:
+            ip, port_cm = POOL_ROOT_IP, POOL_CM_PORT
         client_pool = ClientDCTP(Wallet().address, ip, port_cm)
 
         @client_pool.method('update_balance_pool')

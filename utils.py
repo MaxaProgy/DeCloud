@@ -41,12 +41,8 @@ def get_pools_address():
 def get_my_ip():
     return '127.0.0.1'
 
-def get_pools_host():
-    data = LoadJsonFile('data/pool/pools_host').as_dict()
-    if not data:
-        return {"": (POOL_ROOT_IP, POOL_PORT, POOL_CM_PORT, POOL_FN_PORT)}
-    return data
-
+def get_pools_host(path):
+    return LoadJsonFile(path).as_dict()
 
 def append_pool_host(name, ip, port_pool, port_cm, port_fn):
     pools = LoadJsonFile('data/pool/pools_host').as_dict()
@@ -89,7 +85,8 @@ class LoadJsonFile:
                     with open(path_rebuild, 'r') as f:
                         self._data = json.loads(f.read())  # Выдает ошибку, если некорректный фалй
                     break
-                except:
+                except Exception as e:
+                    print(44444444444, e)
                     # Если файл битый(при прощлой записи программа оборвалсь на записи файла),
                     # то загружаем данные из прошлой версии tmp
                     if exists_path(path + '.tmp'):

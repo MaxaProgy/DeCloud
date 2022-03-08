@@ -379,7 +379,12 @@ class AppClient(QMainWindow, ManagerFogNodes):
         except Exception as e:
             print(e)
         self._address_pool = Wallet(LoadJsonFile('data/pool/key').as_list()[0]).address
-        requests.get(f'http://127.0.0.1:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/register_pool/{self._address_pool}')
+        while True:
+            try:
+                requests.get(f'http://127.0.0.1:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/register_pool/{self._address_pool}')
+                break
+            except:
+                time.sleep(0.1)
 
     def current_change_client_storage(self, row):
         self.createClientStorageAction.setEnabled(

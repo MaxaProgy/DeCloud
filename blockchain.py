@@ -6,7 +6,8 @@ import time
 from threading import Thread
 
 from utils import exists_path, get_path, get_size_file, print_error, \
-    print_info, LoadJsonFile, SaveJsonFile, DispatcherSaveFiles
+    print_info, LoadJsonFile, SaveJsonFile, DispatcherSaveFiles, get_pools_host
+from variables import POOL_ROOT_IP, POOL_PORT
 from wallet import Wallet
 
 AMOUNT = 1024 ** 2
@@ -110,16 +111,27 @@ class Blockchain(Thread):
             if sleep_sec < 0:
                 sleep_sec = 0
             time.sleep(sleep_sec)
-            members = list(self._server_fn.get_workers()) + list(self.parent.get_active_pools().keys())
 
+            # ждем пока появятся активные пулы, ecли пул не мастер-пул
+            # или если мастер-пул то в списке пулов не должны быть пулы
+            active_pools = list(self.parent.get_active_pools().keys())
+            while len(active_pools) == 1 and active_pools[0] == self.parent._wallet.address and \
+                    not (self.parent._ip == POOL_ROOT_IP and self.parent._port_pool == POOL_PORT and
+                         len(get_pools_host('data/pool/pools_host').keys()) == 0):
+                time.sleep(0.1)
+                active_pools = list(self.parent.get_active_pools().keys())
+
+            members = list(self._server_fn.get_workers()) + active_pools
+            # print(33333333333333333, members)
             hash_last_cut = Wallet.address_build_checksum(hash_last[:len(members[0])])
-            #print(members)
-            #print_info("hash_last_cut", hash_last_cut)
+            # print(members)
+            # print_info("hash_last_cut", hash_last_cut)
 
-            nearest = members[0]
-            members.pop(0)
+            nearest = members.pop(0)
             for member in members:
-                if (nearest < member <= hash_last_cut) or (hash_last_cut <= member < nearest):
+                if nearest < member <= hash_last_cut or \
+                        hash_last_cut <= member < nearest or \
+                        member < hash_last_cut < nearest:
                     nearest = member
             ClientState(nearest).all_balance += AMOUNT
 
