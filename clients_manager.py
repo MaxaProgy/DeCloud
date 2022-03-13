@@ -154,7 +154,6 @@ class DispatcherClientsManager(Process):
         Process.__init__(self)
         self._port = port
         self._session_keys = {}
-        self._clients = LoadJsonFile('data/pool/state_pool').as_dict()
 
     def run(self):
         pools = get_pools_host('data/pool/pools_host')
@@ -162,21 +161,12 @@ class DispatcherClientsManager(Process):
             ip, _, port_cm, _ = [item for _, item in pools.items()][0]
         else:
             ip, port_cm = POOL_ROOT_IP, POOL_CM_PORT
-        client_pool = ClientDCTP(Wallet().address, ip, port_cm)
 
-        @client_pool.method('update_balance_pool')
-        def update_balance_pool(data):
-            self._clients[data['id_client']] = {'amount': data['amount']}
-            SaveJsonFile('data/pool/state_pool', self._clients)
-
+        client_pool = ClientDCTP(f'CM-{Wallet().address}', ip, port_cm)
         client_pool.start()
 
 
         app = Flask(__name__)
-
-        @app.route('/api/get_pool_balance/<id_client>', methods=['GET'])
-        def get_pool_balance(id_client):
-            return jsonify(self._clients.get(id_client, {'amount': 0}))
 
         @app.route('/api/register_pool/<address>', methods=['GET'])
         def register_pool(address):

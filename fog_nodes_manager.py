@@ -6,15 +6,15 @@ from wallet import Wallet
 
 
 class WorkerProcess(Process):
-    def __init__(self, cpu, port):
+    def __init__(self, process_name, port):
         super().__init__()
-        self._cpu = cpu
+        self.process_name = process_name
         self._port = port
         self.fog_nodes = {}
         self.client = None
 
     def run(self):
-        self.client = ClientDCTP(f'WORKER {str(self._cpu)}', '127.0.0.1', self._port)
+        self.client = ClientDCTP(self.process_name, '127.0.0.1', self._port)
 
         @self.client.method('add_fog_node')
         def add_fog_node(data):
@@ -29,13 +29,12 @@ class WorkerProcess(Process):
 
 
 class ManagerFogNodes:
-    def __init__(self):
-        self.workers = {}
-        self._cpu_count = cpu_count()
+    def __init__(self, cpu_count=cpu_count()):
+        self.process_worker = []
+        self._cpu_count = cpu_count
         self._count_fog_nodes = 0
         self._server_fog_nodes = None
         self.run_server()
-        self.load_fog_nodes()
 
     def run_server(self):
         self._server_fog_nodes = ServerDCTP()
@@ -50,8 +49,10 @@ class ManagerFogNodes:
 
         self._server_fog_nodes.start()
 
-        for cpu in range(cpu_count()):
-            worker = WorkerProcess(cpu, self._server_fog_nodes.current_port)
+        for cpu in range(self._cpu_count):
+            process_name = f'Process_FNM_{Wallet().address}'
+            self.process_worker.append({'process_name': process_name, 'process_clients': []})
+            worker = WorkerProcess(process_name, self._server_fog_nodes.current_port)
             worker.start()
 
     def on_change_state(self, data):
@@ -60,20 +61,20 @@ class ManagerFogNodes:
     def on_change_balance(self, data):
         pass
 
-    def load_fog_nodes(self):
-        for key in LoadJsonFile('data/fog_nodes/key').as_list():
+    def load_fog_nodes(self, path):
+        for key in LoadJsonFile(path).as_list():
             self.add_fog_node(key)
 
     def add_fog_node(self, private_key=None):
-        self._count_fog_nodes += 1
-        worker_name = f'WORKER {self._count_fog_nodes % self._cpu_count}'
         address = Wallet(private_key).address
-        self.workers[worker_name] = self.workers.get(worker_name, []) + [address]
+        self.process_worker[self._count_fog_nodes % self._cpu_count]['process_clients'].append(address)
         self.request(address, 'add_fog_node', data={'private_key': private_key})
+        self._count_fog_nodes += 1
 
-
-    def request(self, address, method, data={}):
-        for key in self.workers.keys():
-            if address in self.workers[key]:
+    def request(self, address, method, data=None):
+        if data is None:
+            data = {}
+        for worker in self.process_worker:
+            if address in worker['process_clients']:
                 data['address'] = address
-                return self._server_fog_nodes.request(key, method=method, data=data)
+                return self._server_fog_nodes.request(worker['process_name'], method=method, data=data)

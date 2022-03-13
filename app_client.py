@@ -23,9 +23,10 @@ from clients_manager import DispatcherClientsManager
 from variables import PORT_DISPATCHER_CLIENTS_MANAGER, POOL_FN_PORT, POOL_PORT, POOL_CM_PORT
 
 
-class AppClient(QMainWindow, ManagerFogNodes):
+class AppClient(QMainWindow):
     def __init__(self):
         super().__init__()
+
         self.pool = None
         self.client_storages = {}
         self._address_pool = None
@@ -33,6 +34,7 @@ class AppClient(QMainWindow, ManagerFogNodes):
         self.full_amount = 0
         self.occupied_amount = 0
         self.last_response_hash = 0
+
         if exists_path('data/pool/key'):
             self.start_pool()
         self.initUI()
@@ -43,6 +45,11 @@ class AppClient(QMainWindow, ManagerFogNodes):
         self.geometry = QDesktopWidget().availableGeometry()
         self.setGeometry(1000, 1000, 1000, 800)
         self.move(500, 100)
+
+        self.mfn = ManagerFogNodes()
+        self.mfn.load_fog_nodes('data/fog_nodes/key')
+        self.mfn.on_change_balance = self.on_change_balance
+        self.mfn.on_change_state = self.on_change_state
 
         # -----------------------------
         # Widgets tab - Client Storages
@@ -299,9 +306,9 @@ class AppClient(QMainWindow, ManagerFogNodes):
     def update_data(self):
         while True:
             try:
-                self.labelAmountPool.setText(self.amount_format(
-                requests.get(f'http://127.0.0.1:{PORT_DISPATCHER_CLIENTS_MANAGER}/'
-                             f'api/get_pool_balance/{self._address_pool}').json()['amount']))
+                #self.labelAmountPool.setText(self.amount_format(
+                #requests.get(f'http://127.0.0.1:{PORT_DISPATCHER_CLIENTS_MANAGER}/'
+                #             f'api/get_pool_balance/{self._address_pool}').json()['amount']))
 
                 self.show_current_dir()
             except:
@@ -418,7 +425,7 @@ class AppClient(QMainWindow, ManagerFogNodes):
 
     def create_node(self):
         # Создаем новую node
-        self.add_fog_node()
+        self.mfn.add_fog_node()
 
     def create_dir(self):
         # Создание новой директории

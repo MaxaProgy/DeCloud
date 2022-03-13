@@ -1,12 +1,11 @@
 import os
 import json
-
-from variables import POOL_CM_PORT, POOL_FN_PORT, POOL_ROOT_IP, POOL_PORT
 from shutil import copyfile
 
 ERROR_VIEW = True
 INFO_VIEW = True
 WARNING_VIEW = True
+
 
 def get_path(path: str) -> str:
     file = ''
@@ -38,11 +37,21 @@ def get_size_file(path: str) -> int:
 def get_pools_address():
     return list(LoadJsonFile('data/pool/pools_host').as_dict().keys())
 
+
 def get_my_ip():
     return '127.0.0.1'
+    """
+    import urllib.request
+    import re
+    
+    res = urllib.request.urlopen('http://2ip.ru/').read()
+    return re.search(b'\d+\.\d+\.\d+\.\d+', res).group().decode("utf-8"))
+    """
+
 
 def get_pools_host(path):
     return LoadJsonFile(path).as_dict()
+
 
 def append_pool_host(name, ip, port_pool, port_cm, port_fn):
     pools = LoadJsonFile('data/pool/pools_host').as_dict()
@@ -59,6 +68,7 @@ def print_info(*args):
     if INFO_VIEW:
         print(*args)
 
+
 def print_warning(*args):
     if WARNING_VIEW:
         print(*args)
@@ -70,7 +80,7 @@ class SaveJsonFile:
         path = get_path(path)
         # Сначала сохраняем в файл tmp (обновляем предыдущую версию)
         with open(path + '.tmp', 'w') as f:
-            f.write(json.dumps(data))
+            f.write(json.dumps(data, sort_keys=True))
         copyfile(path + '.tmp', path)
         os.remove(path + '.tmp')
 
@@ -142,7 +152,7 @@ class DispatcherSaveFiles:
         self._tasks.add(path)
         # Сначала сохраняем в файл tmp (обновляем предыдущую версию)
         with open(get_path(path) + '.tmp', 'w') as f:
-            f.write(json.dumps(data))
+            f.write(json.dumps(data, sort_keys=True))
 
     def commit(self):
         for path in self._tasks:

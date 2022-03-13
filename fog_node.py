@@ -3,8 +3,6 @@ from _pysha3 import keccak_256 as sha3_256
 import os
 import time
 from threading import Thread
-
-
 from dctp import ClientDCTP
 from utils import get_pools_host, get_path, exists_path, get_size_file, SaveJsonFile, print_error
 from variables import POOL_PORT, POOL_FN_PORT, POOL_ROOT_IP, POOL_CM_PORT
@@ -13,7 +11,6 @@ from wallet import Wallet
 SIZE_REPLICA = 1024 ** 2
 COUNT_REPLICAS_IN_FOG_NODE = 100  # 30 * 1024
 COUNT_REPLICAS_IN_CLIENTS_STORAGES = 200
-
 SLICE_FOR_RANDOM_HASH = 10
 
 
@@ -115,25 +112,24 @@ class FogNode(BaseFogNode, Thread):
 
     def _load_and_check_replicas(self):
         # Загружаем все данные в Fog Nodes, проверяем их целостность.
-        if exists_path(f'data/{self._main_dir_data}/{self._id_fog_node}/'):
-            path = get_path(f'data/{self._main_dir_data}/{self._id_fog_node}/')
-            for directory_path, directory_names, file_names in os.walk(path):
-                for file_name in file_names:
-                    # Ноходим путь к файлу и сравниваем его с хэшом файла,
-                    # проверяем в блокчейне существование данного хэша,
-                    # в противном случаем удалем файл
-                    hash_replica = ''.join(directory_path[len(path):].split('\\')) + file_name
-                    file = open(os.path.join(directory_path, file_name), 'rb').read()
-                    if sha3_256(file).hexdigest()[-len(hash_replica):] == hash_replica and \
-                            (len(hash_replica) == SLICE_FOR_RANDOM_HASH or (len(hash_replica) == 64)):
-                        self._all_hash_replicas.append(hash_replica)
-                        #self._size_fog_node += os.path.getsize(os.path.join(directory_path, file_name))
-                    else:
-                        self._delete_replica(hash_replica)
-
-            return {"success": "Ok."}
-        else:
-            return {'error': f'Directory {self._id_fog_node} does not exist.'}
+        path = get_path(f'data/{self._main_dir_data}/{self._id_fog_node}/')
+        for directory_path, directory_names, file_names in os.walk(path):
+            for file_name in file_names:
+                # Ноходим путь к файлу и сравниваем его с хэшом файла,
+                # проверяем в блокчейне существование данного хэша,
+                # в противном случаем удалем файл
+                hash_replica = ''.join(directory_path[len(path):].split('\\')) + file_name
+                file = open(os.path.join(directory_path, file_name), 'rb').read()
+                if sha3_256(file).hexdigest()[-len(hash_replica):] == hash_replica and \
+                        (len(hash_replica) == SLICE_FOR_RANDOM_HASH or (len(hash_replica) == 64)):
+                    self._all_hash_replicas.append(hash_replica)
+                    # self._size_fog_node += os.path.getsize(os.path.join(directory_path, file_name))
+                else:
+                    self._delete_replica(hash_replica)
+        # Добавляем рандомные блоки, если какие-то файлы были удалены,
+        # чтобы размер плота был = COUNT_REPLICAS_IN_FOG_NODE * SIZE_REPLICA
+        while COUNT_REPLICAS_IN_FOG_NODE * SIZE_REPLICA - self._size_fog_node >= SIZE_REPLICA:
+            self._create_random_init_replica()
 
     @property
     def pool_client(self):
@@ -147,7 +143,7 @@ class FogNode(BaseFogNode, Thread):
             active_pools = {}
             for key, item in list(pools.items()):
                 try:
-                    response = requests.get(f'http://{item[0]}:{item[1]}/get_active').json()
+                    response = requests.get(f'http://{item[0]}:{item[1]}/get_active_pools').json()
                     for key_response, item_response in response.items():
                         active_pools[key_response] = item_response
                         pools[key_response] = item_response
@@ -160,7 +156,8 @@ class FogNode(BaseFogNode, Thread):
             count_fog_nodes = []
             for key, item in active_pools.items():
                 try:
-                    count_fog_nodes.append((key, requests.get(f'http://{item[0]}:{item[1]}/get_count_fog_nodes').json()))
+                    count_fog_nodes.append((key, requests.get(
+                        f'http://{item[0]}:{item[1]}/get_active_count_fog_nodes').json()))
                 except:
                     pass
 
@@ -171,7 +168,8 @@ class FogNode(BaseFogNode, Thread):
                 min_count_pool_connection = -1
                 if self.pool_ip:
                     try:
-                        min_count_pool_connection = requests.get(f'http://{self.pool_ip}:{self.pool_port}/get_count_fog_nodes').json()
+                        min_count_pool_connection = requests.get(
+                            f'http://{self.pool_ip}:{self.pool_port}/get_active_count_fog_nodes').json()
                     except:
                         pass
                 if min_count_pool_connection == count_fog_nodes[0][1]:
@@ -180,16 +178,16 @@ class FogNode(BaseFogNode, Thread):
 
                 return active_pools[address]
 
-            print_error('Нет соединения с pool')
+            print_error('Нет соединения с active pools')
             time.sleep(2)
 
     def _connect_pool(self):
         item = self._get_connect_address_pool()
         if item:
-            print(99999999999)
             self.pool_ip, self.pool_port, port_fn = item[0], item[1], item[3]
 
             pool_client = ClientDCTP(self.wallet.address, self.pool_ip, port_fn)
+
             @pool_client.method('update_balance')
             def update_balance(data):
                 self._process_client.request(self._id_fog_node, 'update_balance_fog_node',
@@ -200,38 +198,29 @@ class FogNode(BaseFogNode, Thread):
                 self._pool_client.stop()
             self._pool_client = pool_client
 
-
     def run(self):
-        self._connect_pool()
+        self._process_client.request(self._id_fog_node, 'current_state_fog_node',
+                                     json={'state': 'connecting', 'id_fog_node': self._id_fog_node})
 
-        if self._check_state == 'create':
-            print(f'Create FOG NODE {self.wallet.address} in {self._process_client._worker_name}')
-        elif self._check_state == 'load':
-            print(f'Load FOG NODE {self.wallet.address} in {self._process_client._worker_name}')
+        self._connect_pool()
 
         self._process_client.request(self._id_fog_node, 'current_state_fog_node',
                                      json={'state': 'preparing', 'id_fog_node': self._id_fog_node})
 
         if self._check_state == 'create':
             # Создаем начальные replicas
+            print(f'Create FOG NODE {self.wallet.address} in {self._process_client._worker_name}')
             for _ in range(COUNT_REPLICAS_IN_FOG_NODE):
                 self._create_random_init_replica()
         elif self._check_state == 'load':
+            print(f'Load FOG NODE {self.wallet.address} in {self._process_client._worker_name}')
             self._load_and_check_replicas()
-            # Добавляем рандомные блоки, если какие-то файлы были удалены,
-            # чтобы размер плота был = COUNT_REPLICAS_IN_FOG_NODE * SIZE_REPLICA
-            while COUNT_REPLICAS_IN_FOG_NODE * SIZE_REPLICA - self._size_fog_node >= SIZE_REPLICA:
-                self._create_random_init_replica()
 
         if self._pool_client.is_alive():
-            self._process_client.request(self._id_fog_node, 'current_state_fog_node',
-                                         json={'state': 'ready', 'id_fog_node': self._id_fog_node})
-
             self._process_client.request(self._id_fog_node, 'update_balance_fog_node',
                                          json=self._pool_client.request(self._id_fog_node, 'get_balance'))
-        else:
-            self._process_client.request(self._id_fog_node, 'current_state_fog_node',
-                                         json={'state': 'error', 'id_fog_node': self._id_fog_node})
+        self._process_client.request(self._id_fog_node, 'current_state_fog_node',
+                                     json={'state': 'work', 'id_fog_node': self._id_fog_node})
 
         while True:
             time.sleep(60)
