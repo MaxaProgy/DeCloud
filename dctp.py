@@ -13,7 +13,7 @@ def send_status_code(status):
 
 
 class ClientDCTP(Thread):
-    def __init__(self, worker_name, ip, port, type_connection='duplex'):
+    def __init__(self, client_name, ip, port, type_connection='duplex'):
         Thread.__init__(self)
 
         if type_connection == 'duplex':
@@ -26,11 +26,16 @@ class ClientDCTP(Thread):
         self.lock_obj = RLock()
         self._ip = ip
         self._port = port
-        self._worker_name = worker_name
+        self._client_name = client_name
         self._dict_methods_call = {}
         self._socks = {}
         self._stoping = False
-        self._ready = False
+        self._stop = False
+        self._break_stoping = False
+
+    @property
+    def client_name(self):
+        return self._client_name
 
     @staticmethod
     # Принимаем запрос
@@ -57,6 +62,9 @@ class ClientDCTP(Thread):
         self._stoping = True
         self._socks = None
 
+    def is_stoped(self):
+        return self._stop
+
     # Устанавливаем соединение
     def run(self):
         while not self._stoping:
@@ -64,21 +72,20 @@ class ClientDCTP(Thread):
                 for type_connect in self._type_connection:
                     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     sock.connect((self._ip, self._port))
-                    self._send_request(sock, {'worker_id': self._worker_name, 'type': type_connect})
+                    self._send_request(sock, {'worker_id': self._client_name, 'type': type_connect})
 
                     self._socks[type_connect] = sock
 
-                self._ready = True
                 # Созданем поток и принимаем входящие запросы от сервера
                 if "server to client" in self._type_connection:
                     receiver_thread = Thread(target=self._receiver)
                     receiver_thread.start()
                     receiver_thread.join()
             except:
-                print(f'Нет соединения {self._worker_name}.')
-                time.sleep(1)
-
-        print_info(f'Client {self._worker_name} disconnect {self._ip}:{self._port}')
+                print(f'Нет соединения {self._client_name}.')
+        if not self._break_stoping:
+            print_info(f'Client {self._client_name} disconnect {self._ip}:{self._port}')
+        self._stop = True
 
     def request(self, id_fog_node, method, data=b'', json=None):
         # Подготавливаем данные к отправке запроса
@@ -99,14 +106,15 @@ class ClientDCTP(Thread):
 
     def _receiver(self):
         while True:
-            # Ждем пока придет запрос от сервкра
+            # Ждем пока придет запрос от сервера
             response = self._receive_request(self, self._socks['server to client'])
 
             # Если произошел сброс соединения
             if not response:
                 if not self._stoping:
-                    print(f'Нет соединения {self._worker_name}.')
-                    time.sleep(0.1)
+                    self._stoping = True
+                    self._break_stoping = True
+                    print(f'Client {self._client_name} connection break.')
                 break
 
             # Если в запросе от сервера пришел error
@@ -279,3 +287,6 @@ class ServerDCTP(Thread):
 
     def get_workers(self):
         return tuple(self._workers.keys())
+
+    def get_count_workers(self):
+        return len(self._workers)

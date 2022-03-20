@@ -572,15 +572,6 @@ class AppClient(QMainWindow):
 
 
 if __name__ == '__main__':
-    """
-    parser = ArgumentParser()
-    parser.add_argument('-pd', '--port_dispatcher', default=PORT_DISPATCHER_CLIENTS_MANAGER, type=int,
-                        help='port to listen dispatcher client storage')
-    parser.add_argument('-ppl', '--port_pool',  default=POOL_PORT, type=int, help='port to listen pool')
-    parser.add_argument('-pcm', '--port_cm',  default=POOL_CM_PORT, type=int,
-                        help='port to listen pool clients manager')
-    parser.add_argument('-pfn', '--port_fn',  default=POOL_FN_PORT, type=int, help='port to listen pool fog nodes')
-    """
     app = QApplication(sys.argv)
 
     dispatcher = DispatcherClientsManager(PORT_DISPATCHER_CLIENTS_MANAGER)

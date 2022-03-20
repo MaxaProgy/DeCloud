@@ -1,3 +1,5 @@
+import datetime
+
 import requests
 from _pysha3 import keccak_256 as sha3_256
 import os
@@ -87,6 +89,7 @@ class FogNode(BaseFogNode, Thread):
         self._process_client = process_client
         self._main_dir_data = 'fog_nodes'
         self._pool_client = None
+        self._address_pool_now_connect = None
 
         if private_key is None:
             # Создаем private_key сами
@@ -131,10 +134,6 @@ class FogNode(BaseFogNode, Thread):
         while COUNT_REPLICAS_IN_FOG_NODE * SIZE_REPLICA - self._size_fog_node >= SIZE_REPLICA:
             self._create_random_init_replica()
 
-    @property
-    def pool_client(self):
-        return self._pool_client
-
     def _get_connect_address_pool(self):
         while True:
             pools = get_pools_host('data/fog_nodes/pools_host')
@@ -153,39 +152,33 @@ class FogNode(BaseFogNode, Thread):
                 pools.pop('')
             SaveJsonFile('data/fog_nodes/pools_host', pools)
 
-            count_fog_nodes = []
-            for key, item in active_pools.items():
+            for key, item in list(active_pools.items()):
                 try:
-                    count_fog_nodes.append((key, requests.get(
-                        f'http://{item[0]}:{item[1]}/get_active_count_fog_nodes').json()))
+                    active_pools[key] = requests.get(f'http://{item[0]}:{item[1]}/get_active_count_fog_nodes').json()
                 except:
-                    pass
+                    active_pools.pop(key)
 
+            count_fog_nodes = [(key, item) for key, item in active_pools.items()]
+            #print(888888888888888888, active_pools)
+            #print(999999999999999999, count_fog_nodes)
             if count_fog_nodes:
                 count_fog_nodes.sort(key=lambda x: x[1])
-                address = count_fog_nodes[0][0]
-
-                min_count_pool_connection = -1
-                if self.pool_ip:
-                    try:
-                        min_count_pool_connection = requests.get(
-                            f'http://{self.pool_ip}:{self.pool_port}/get_active_count_fog_nodes').json()
-                    except:
-                        pass
-                if min_count_pool_connection == count_fog_nodes[0][1]:
-                    return
-                self.min_count_pool_connection = count_fog_nodes[0][1]
-
-                return active_pools[address]
+                if self._pool_client:
+                    #print(1000000000000000, self._address_pool_now_connect)
+                    #print(1111111111111111, active_pools[self._address_pool_now_connect], count_fog_nodes[0][1])
+                    if self._address_pool_now_connect in active_pools and \
+                        active_pools[self._address_pool_now_connect] == count_fog_nodes[0][1]:
+                        return
+                self._address_pool_now_connect = count_fog_nodes[0][0]
+                return pools[count_fog_nodes[0][0]]
 
             print_error('Нет соединения с active pools')
             time.sleep(2)
 
     def _connect_pool(self):
-        item = self._get_connect_address_pool()
-        if item:
-            self.pool_ip, self.pool_port, port_fn = item[0], item[1], item[3]
-
+        new_pool_params = self._get_connect_address_pool()
+        if new_pool_params:
+            self.pool_ip, self.pool_port, _, port_fn = new_pool_params
             pool_client = ClientDCTP(self.wallet.address, self.pool_ip, port_fn)
 
             @pool_client.method('update_balance')
@@ -194,6 +187,7 @@ class FogNode(BaseFogNode, Thread):
                                              json={'amount': data['amount'], 'id_fog_node': self._id_fog_node})
 
             pool_client.start()
+
             if self._pool_client:
                 self._pool_client.stop()
             self._pool_client = pool_client
@@ -209,11 +203,11 @@ class FogNode(BaseFogNode, Thread):
 
         if self._check_state == 'create':
             # Создаем начальные replicas
-            print(f'Create FOG NODE {self.wallet.address} in {self._process_client._worker_name}')
+            print(f'Create FOG NODE {self.wallet.address} in {self._process_client.client_name}')
             for _ in range(COUNT_REPLICAS_IN_FOG_NODE):
                 self._create_random_init_replica()
         elif self._check_state == 'load':
-            print(f'Load FOG NODE {self.wallet.address} in {self._process_client._worker_name}')
+            print(f'Load FOG NODE {self.wallet.address} in {self._process_client.client_name}')
             self._load_and_check_replicas()
 
         if self._pool_client.is_alive():
@@ -222,6 +216,23 @@ class FogNode(BaseFogNode, Thread):
         self._process_client.request(self._id_fog_node, 'current_state_fog_node',
                                      json={'state': 'work', 'id_fog_node': self._id_fog_node})
 
+        time.sleep(30)
         while True:
-            time.sleep(60)
-            self._connect_pool()
+            date = datetime.datetime.utcnow()
+            if 10 < date.second < 50:
+                for _ in range(65):
+                    if self._pool_client.is_stoped():
+                        self._address_pool_now_connect = None
+                        break
+                    else:
+                        time.sleep(1)
+                self._connect_pool()
+            else:
+                time.sleep(1)
+
+            """
+            date = datetime.datetime.utcnow()
+            if date.second > 30 and minute != date.minute:
+                minute = date.minute
+                self._connect_pool()
+            time.sleep(1)"""

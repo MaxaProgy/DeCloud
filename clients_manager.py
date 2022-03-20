@@ -157,10 +157,7 @@ class DispatcherClientsManager(Process):
 
     def run(self):
         pools = get_pools_host('data/pool/pools_host')
-        if pools:
-            ip, _, port_cm, _ = [item for _, item in pools.items()][0]
-        else:
-            ip, port_cm = POOL_ROOT_IP, POOL_CM_PORT
+        ip, _, port_cm, _ = [item for _, item in pools.items()][0]
 
         client_pool = ClientDCTP(f'CM-{Wallet().address}', ip, port_cm)
         client_pool.start()
