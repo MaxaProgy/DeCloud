@@ -2,7 +2,6 @@ from _pysha3 import keccak_256 as sha3_256
 import json
 import os
 from py_ecc.secp256k1 import ecdsa_raw_sign, ecdsa_raw_recover, privtopub
-
 from utils import LoadJsonFile, SaveJsonFile
 
 

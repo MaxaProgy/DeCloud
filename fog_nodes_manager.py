@@ -17,13 +17,13 @@ class WorkerProcess(Process):
         self.client = ClientDCTP(self.process_name, '127.0.0.1', self._port)
 
         @self.client.method('add_fog_node')
-        def add_fog_node(data):
-            self.fog_nodes[data['address']] = FogNode(self.client, data['private_key'])
-            self.fog_nodes[data['address']].start()
+        def add_fog_node(json, data):
+            self.fog_nodes[json['address']] = FogNode(self.client, json['private_key'])
+            self.fog_nodes[json['address']].start()
 
         @self.client.method('get_balance')
-        def get_balance(data):
-            return self.fog_nodes[data['address']].pool_client.request(data['address'], 'get_balance')
+        def get_balance(json, data):
+            return self.fog_nodes[json['address']].pool_client.request(json['address'], 'get_balance')
 
         self.client.start()
 
@@ -66,15 +66,19 @@ class ManagerFogNodes:
             self.add_fog_node(key)
 
     def add_fog_node(self, private_key=None):
-        address = Wallet(private_key).address
-        self.process_worker[self._count_fog_nodes % self._cpu_count]['process_clients'].append(address)
-        self.request(address, 'add_fog_node', data={'private_key': private_key})
+        wallet = Wallet(private_key)
+        if private_key is None:
+            wallet.save_private_key('data/fog_nodes/key')
+            for key in reversed(LoadJsonFile('data/fog_nodes/key').as_list()):
+                if Wallet(key).address == wallet.address:
+                    private_key = key
+                    break
+        self.process_worker[self._count_fog_nodes % self._cpu_count]['process_clients'].append(wallet.address)
+        self.request(wallet.address, 'add_fog_node', json={'private_key': private_key})
         self._count_fog_nodes += 1
 
-    def request(self, address, method, data=None):
-        if data is None:
-            data = {}
+    def request(self, address, method, json={}):
         for worker in self.process_worker:
             if address in worker['process_clients']:
-                data['address'] = address
-                return self._server_fog_nodes.request(worker['process_name'], method=method, data=data)
+                json['address'] = address
+                return self._server_fog_nodes.request(worker['process_name'], method=method, json=json)

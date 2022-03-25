@@ -1,5 +1,4 @@
 import datetime
-
 import requests
 from _pysha3 import keccak_256 as sha3_256
 import os
@@ -7,7 +6,7 @@ import time
 from threading import Thread
 from dctp import ClientDCTP
 from utils import get_pools_host, get_path, exists_path, get_size_file, SaveJsonFile, print_error
-from variables import POOL_PORT, POOL_FN_PORT, POOL_ROOT_IP, POOL_CM_PORT
+from variables import POOL_ROOT_IP, POOL_ROOT_PORT, POOL_FN_PORT, POOL_CM_PORT
 from wallet import Wallet
 
 SIZE_REPLICA = 1024 ** 2
@@ -19,6 +18,7 @@ SLICE_FOR_RANDOM_HASH = 10
 class BaseFogNode:
     def __init__(self):
         self._size_fog_node = 0
+        self._real_size_fog_node = 0
         self._id_fog_node = None
         self._all_hash_replicas = []
         self._main_dir_data = None
@@ -27,6 +27,11 @@ class BaseFogNode:
         if random_replica:
             hex_hash = sha3_256(replica).hexdigest()[:SLICE_FOR_RANDOM_HASH]
         else:
+            if self._size_fog_node + len(replica) > SIZE_REPLICA * COUNT_REPLICAS_IN_FOG_NODE:
+                for hash in self._all_hash_replicas:
+                    if len(hash) == SLICE_FOR_RANDOM_HASH:
+                        self._delete_replica(hash)
+                        break
             hex_hash = sha3_256(replica).hexdigest()
 
         # находим путь для сохранения разбивая хэш на пары. Создаемм папки и сохраняем файл
@@ -41,8 +46,11 @@ class BaseFogNode:
             # доработать в будущем проверку, если хэш файла одинаковым, а содержимое файлов разное
 
         # Добавляет в список self._all_hash_replicas хэши блоков
-        self._all_hash_replicas.append(hex_hash)
-        self._size_fog_node += get_size_file(path)
+        size = get_size_file(path)
+        if not random_replica:
+            self._all_hash_replicas.append(hex_hash)
+            self._real_size_fog_node += size
+        self._size_fog_node += size
 
         return hex_hash
 
@@ -65,10 +73,19 @@ class BaseFogNode:
         # Удаляем файл с бинарными данными
         os.remove(get_path(f'data/{self._main_dir_data}/{self._id_fog_node}/{"/".join(dirs)}/{id_replica[-2:]}'))
         try:
+            index = self._all_hash_replicas.index(id_replica)
+            self._all_hash_replicas.pop(index)
+        except ValueError:
+            pass
+
+        try:
             # Удаляет пустые папки по пути к файлу
             for i in range(len(dirs), 0, -1):
                 path = f'data/{self._main_dir_data}/{self._id_fog_node}/{"/".join(dirs[:i])}/'
-                self._size_fog_node -= get_size_file(path)
+                size = get_size_file(path)
+                if len(id_replica) != SLICE_FOR_RANDOM_HASH:
+                    self._real_size_fog_node -= size
+                self._size_fog_node -= size
                 os.rmdir(get_path(path))
         except:
             # Если папка не пустая, то срабатывает исключение и папка не удаляется
@@ -80,7 +97,7 @@ class BaseFogNode:
 
 
 class FogNode(BaseFogNode, Thread):
-    def __init__(self, process_client, private_key=None):
+    def __init__(self, process_client, private_key: str):
         BaseFogNode.__init__(self)
         Thread.__init__(self)
         self.pool_ip, self.pool_port = None, None
@@ -90,19 +107,9 @@ class FogNode(BaseFogNode, Thread):
         self._main_dir_data = 'fog_nodes'
         self._pool_client = None
         self._address_pool_now_connect = None
-
-        if private_key is None:
-            # Создаем private_key сами
-            # и получаем address
-            wallet = Wallet()
-            wallet.save_private_key('data/fog_nodes/key')
-            self._id_fog_node = wallet.address
-            self._check_state = 'create'
-        else:
-            # Получаем address
-            wallet = Wallet(private_key)
-            self._id_fog_node = wallet.address
-            self._check_state = 'load'
+        # Получаем address
+        wallet = Wallet(private_key)
+        self._id_fog_node = wallet.address
         self._wallet = wallet
 
     @property
@@ -113,7 +120,7 @@ class FogNode(BaseFogNode, Thread):
         # Создаем 1 блок со случайными данными.
         self._save_replica(os.urandom(SIZE_REPLICA), random_replica=True)
 
-    def _load_and_check_replicas(self):
+    def _preparing_replicas(self):
         # Загружаем все данные в Fog Nodes, проверяем их целостность.
         path = get_path(f'data/{self._main_dir_data}/{self._id_fog_node}/')
         for directory_path, directory_names, file_names in os.walk(path):
@@ -123,10 +130,16 @@ class FogNode(BaseFogNode, Thread):
                 # в противном случаем удалем файл
                 hash_replica = ''.join(directory_path[len(path):].split('\\')) + file_name
                 file = open(os.path.join(directory_path, file_name), 'rb').read()
-                if sha3_256(file).hexdigest()[-len(hash_replica):] == hash_replica and \
-                        (len(hash_replica) == SLICE_FOR_RANDOM_HASH or (len(hash_replica) == 64)):
-                    self._all_hash_replicas.append(hash_replica)
-                    # self._size_fog_node += os.path.getsize(os.path.join(directory_path, file_name))
+                if sha3_256(file).hexdigest()[-len(hash_replica):] == hash_replica:
+                    size = os.path.getsize(os.path.join(directory_path, file_name))
+                    if len(hash_replica) == SLICE_FOR_RANDOM_HASH:
+                        self._size_fog_node += size
+                    elif len(hash_replica) == 64:
+                        self._all_hash_replicas.append(hash_replica)
+                        self._real_size_fog_node += size
+                        self._size_fog_node += size
+                    else:
+                        self._delete_replica(hash_replica)
                 else:
                     self._delete_replica(hash_replica)
         # Добавляем рандомные блоки, если какие-то файлы были удалены,
@@ -138,7 +151,7 @@ class FogNode(BaseFogNode, Thread):
         while True:
             pools = get_pools_host('data/fog_nodes/pools_host')
             if not pools:
-                pools[''] = (POOL_ROOT_IP, POOL_PORT, POOL_CM_PORT, POOL_FN_PORT)
+                pools[''] = (POOL_ROOT_IP, POOL_ROOT_PORT, POOL_CM_PORT, POOL_FN_PORT)
             active_pools = {}
             for key, item in list(pools.items()):
                 try:
@@ -159,15 +172,11 @@ class FogNode(BaseFogNode, Thread):
                     active_pools.pop(key)
 
             count_fog_nodes = [(key, item) for key, item in active_pools.items()]
-            #print(888888888888888888, active_pools)
-            #print(999999999999999999, count_fog_nodes)
             if count_fog_nodes:
                 count_fog_nodes.sort(key=lambda x: x[1])
                 if self._pool_client:
-                    #print(1000000000000000, self._address_pool_now_connect)
-                    #print(1111111111111111, active_pools[self._address_pool_now_connect], count_fog_nodes[0][1])
                     if self._address_pool_now_connect in active_pools and \
-                        active_pools[self._address_pool_now_connect] == count_fog_nodes[0][1]:
+                            active_pools[self._address_pool_now_connect] == count_fog_nodes[0][1]:
                         return
                 self._address_pool_now_connect = count_fog_nodes[0][0]
                 return pools[count_fog_nodes[0][0]]
@@ -182,9 +191,18 @@ class FogNode(BaseFogNode, Thread):
             pool_client = ClientDCTP(self.wallet.address, self.pool_ip, port_fn)
 
             @pool_client.method('update_balance')
-            def update_balance(data):
+            def update_balance(json, data):
                 self._process_client.request(self._id_fog_node, 'update_balance_fog_node',
-                                             json={'amount': data['amount'], 'id_fog_node': self._id_fog_node})
+                                             json={'amount': json['amount'], 'id_fog_node': self._id_fog_node})
+
+            @pool_client.method('get_hash_replicas')
+            def get_hash_replicas(json, data):
+                return {'hash_replicas': self._all_hash_replicas, 'size_fog_node': self._real_size_fog_node}
+
+            @pool_client.method('save_replica')
+            def save_replica(json, data):
+                hex_hash = self._save_replica(data)
+                #print(f'Save replica {hex_hash} in fog_node {self.id_fog_node}')
 
             pool_client.start()
 
@@ -195,27 +213,16 @@ class FogNode(BaseFogNode, Thread):
     def run(self):
         self._process_client.request(self._id_fog_node, 'current_state_fog_node',
                                      json={'state': 'connecting', 'id_fog_node': self._id_fog_node})
-
         self._connect_pool()
-
         self._process_client.request(self._id_fog_node, 'current_state_fog_node',
                                      json={'state': 'preparing', 'id_fog_node': self._id_fog_node})
-
-        if self._check_state == 'create':
-            # Создаем начальные replicas
-            print(f'Create FOG NODE {self.wallet.address} in {self._process_client.client_name}')
-            for _ in range(COUNT_REPLICAS_IN_FOG_NODE):
-                self._create_random_init_replica()
-        elif self._check_state == 'load':
-            print(f'Load FOG NODE {self.wallet.address} in {self._process_client.client_name}')
-            self._load_and_check_replicas()
+        self._preparing_replicas()
 
         if self._pool_client.is_alive():
             self._process_client.request(self._id_fog_node, 'update_balance_fog_node',
                                          json=self._pool_client.request(self._id_fog_node, 'get_balance'))
         self._process_client.request(self._id_fog_node, 'current_state_fog_node',
                                      json={'state': 'work', 'id_fog_node': self._id_fog_node})
-
         time.sleep(30)
         while True:
             date = datetime.datetime.utcnow()
@@ -229,10 +236,3 @@ class FogNode(BaseFogNode, Thread):
                 self._connect_pool()
             else:
                 time.sleep(1)
-
-            """
-            date = datetime.datetime.utcnow()
-            if date.second > 30 and minute != date.minute:
-                minute = date.minute
-                self._connect_pool()
-            time.sleep(1)"""

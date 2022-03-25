@@ -1,17 +1,20 @@
+import datetime
 import os
 import json
 import time
 from shutil import copyfile
+from _pysha3 import keccak_256 as sha3_256
 from variables import POOL_PORT, POOL_ROOT_IP, POOL_FN_PORT, POOL_CM_PORT
-import requests
 from string import ascii_lowercase
 from random import choice
 
 ERROR_VIEW = True
 INFO_VIEW = True
 WARNING_VIEW = True
+TIME_TO_LIFE_FILE = 3600  # Время жизни файла в секундах
 
 _LETTERS = ascii_lowercase
+
 
 def get_path(path: str) -> str:
     file = ''
@@ -44,15 +47,6 @@ def get_pools_address():
     return list(LoadJsonFile('data/pool/pools_host').as_dict().keys())
 
 
-def get_my_ip():
-    while True:
-        try:
-            return requests.get(f'http://{POOL_ROOT_IP}:{POOL_PORT}/get_my_ip').json()
-        except:
-            time.sleep(1)
-            print('Нет подключения к ROOT POOL')
-            pass
-
 def get_pools_host(path):
     pools = LoadJsonFile(path).as_dict()
     if pools:
@@ -81,8 +75,22 @@ def print_warning(*args):
     if WARNING_VIEW:
         print(*args)
 
+
 def generate_random_string(length):
     return ''.join(choice(_LETTERS) for _ in range(length))
+
+
+def get_hash(data):
+    return hex(int.from_bytes(sha3_256(bytes(json.dumps(data, sort_keys=True), 'utf-8')).digest(), 'big'))[2:]
+
+
+def sorted_dict(data):
+    return dict(sorted(data.items(), key=lambda x: x[0]))
+
+
+def is_ttl_file(path):
+    return datetime.datetime.now().timestamp() - os.path.getctime(get_path(path)) < TIME_TO_LIFE_FILE
+
 
 class SaveJsonFile:
     # Сохранение в файлы
@@ -124,15 +132,15 @@ class LoadJsonFile:
         if exists_path(path):
             path_rebuild = get_path(path)
             flag_open_file = False
-            for _ in range(20):                
+            for _ in range(50):
                 try:
                     with open(path_rebuild, 'r') as f:
                         self._data = json.loads(f.read())  # Выдает ошибку, если некорректный фалй
                     flag_open_file = True
                     break
                 except:
-                    time.sleep(0.1)                    
-            if not flag_open_file:   
+                    time.sleep(0.1)
+            if not flag_open_file:
                 # Если файл битый(при прощлой записи программа оборвалсь на записи файла),
                 # то загружаем данные из прошлой версии tmp
                 if exists_path(path + '.tmp'):

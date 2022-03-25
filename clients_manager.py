@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*
+import random
 from multiprocessing import Process
 from queue import Queue
 import json
+
+import requests
+
 from dctp import ClientDCTP
 from fog_node import BaseFogNode, SIZE_REPLICA
-from flask import Flask, request, jsonify, Response
+from flask import Flask, request, jsonify, Response, abort
 from utils import get_pools_host, LoadJsonFile, SaveJsonFile
-from variables import POOL_PORT, POOL_CM_PORT, POOL_ROOT_IP
 from wallet import Wallet
 
 SESSION_TIME_LIFE = 24 * 60 * 60
@@ -157,18 +160,34 @@ class DispatcherClientsManager(Process):
 
     def run(self):
         pools = get_pools_host('data/pool/pools_host')
-        ip, _, port_cm, _ = [item for _, item in pools.items()][0]
+        ip, port, port_cm, _ = pools[random.choice(list(pools.keys()))]
 
         client_pool = ClientDCTP(f'CM-{Wallet().address}', ip, port_cm)
         client_pool.start()
 
-
         app = Flask(__name__)
 
-        @app.route('/api/register_pool/<address>', methods=['GET'])
-        def register_pool(address):
-            client_pool.request(address, method="register_pool")
-            return jsonify()
+        @app.route('/api/get_balance/<address>', methods=['GET'])
+        def get_balance(address):
+            try:
+                return jsonify(requests.get(f'http://{ip}:{port}/get_balance/{address}').json())
+            except:
+                abort(404)
+
+        @app.route('/api/get_free_balance/<address>', methods=['GET'])
+        def get_free_balance(address):
+            try:
+                return jsonify(requests.get(f'http://{ip}:{port}/get_free_balance/{address}').json())
+            except:
+                abort(404)
+
+        @app.route('/api/new_transaction', methods=['POST'])
+        def new_transaction():
+            data = request.json
+            try:
+                return jsonify(client_pool.request(id_client=data['sender'], method='new_transaction', json=data))
+            except:
+                abort(404)
 
         @app.route('/api/save_file', methods=['POST'])
         def save_file():
@@ -200,7 +219,7 @@ class DispatcherClientsManager(Process):
             chunk = bytes(json.dumps([current_dir.hash, data['file_name'], hashes]), 'utf-8')
             hash_file = client._save_replica(chunk)
             client_pool.request(data['address'], 'send_replica', data=chunk)
-            client_pool.request(data['address'], 'commit_replica', json={'hash': hash_file})
+            client_pool.request(data['address'], 'new_transaction', json={'sender': data['address'], 'data': hash_file})
 
             file = FileExplorer(data['file_name'], hash_file)
             current_dir.add_child(file)
@@ -231,7 +250,7 @@ class DispatcherClientsManager(Process):
             hash_dir = client.make_dir(current_dir, name)
             client_pool.request(data['address'], 'send_replica',
                                 data=bytes(json.dumps([current_dir.hash, name]), 'utf-8'))
-            client_pool.request(data['address'], 'commit_replica', json={'hash': hash_dir})
+            client_pool.request(data['address'], 'new_transaction', json={'sender': data['address'], 'data': hash_dir})
             return jsonify(hash_dir)
 
         @app.route('/api/get_object', methods=['GET'])

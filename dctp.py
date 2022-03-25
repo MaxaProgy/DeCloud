@@ -37,9 +37,8 @@ class ClientDCTP(Thread):
     def client_name(self):
         return self._client_name
 
-    @staticmethod
     # Принимаем запрос
-    def _receive_request(self, sock):
+    def _receive_data(self, sock):
         try:
             # принимаем длину получаемых данных
             length_response = int.from_bytes(sock.recv(4), 'big')
@@ -52,11 +51,11 @@ class ClientDCTP(Thread):
 
     # Отправляем запрос серверу
     @staticmethod
-    def _send_request(sock, data=None):
-        request = _json.dumps(data)
+    def _send_data(sock, json=None):
+        json = _json.dumps(json)
         # jngh
-        sock.send(len(request).to_bytes(4, "big"))
-        sock.send(bytes(request, 'utf-8'))
+        sock.send(len(json).to_bytes(4, "big"))
+        sock.send(bytes(json, 'utf-8'))
 
     def stop(self):
         self._stoping = True
@@ -72,45 +71,57 @@ class ClientDCTP(Thread):
                 for type_connect in self._type_connection:
                     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     sock.connect((self._ip, self._port))
-                    self._send_request(sock, {'worker_id': self._client_name, 'type': type_connect})
+                    self._send_data(sock, {'worker_id': self._client_name, 'type': type_connect})
 
                     self._socks[type_connect] = sock
 
                 # Созданем поток и принимаем входящие запросы от сервера
                 if "server to client" in self._type_connection:
-                    receiver_thread = Thread(target=self._receiver)
+                    receiver_thread = Thread(target=self._receiver, args=[self._socks['server to client']])
                     receiver_thread.start()
                     receiver_thread.join()
             except:
                 print(f'Нет соединения {self._client_name}.')
+                time.sleep(1)
         if not self._break_stoping:
             print_info(f'Client {self._client_name} disconnect {self._ip}:{self._port}')
         self._stop = True
 
-    def request(self, id_fog_node, method, data=b'', json=None):
-        # Подготавливаем данные к отправке запроса
-        if json is None:
-            json = {}
-        request = _json.dumps({'method': method, 'json': json})
+    def request(self, id_client, method, json={}, data=b''):
+        # Отправляем запрос серверу и принимаем ответ
+        if type(data) != bytes:
+            raise Exception('Parameter data is not bytes')
+        try:
+            json = _json.dumps({'method': method, 'json': json})
+        except:
+            raise Exception(f'Parameter json as {type(json)} is not parsing to json')
+
         while True:
             try:
-                self._socks['client to server'].send(bytes(id_fog_node, 'utf-8') + len(request).to_bytes(4, "big")
+                self._socks['client to server'].send(bytes(id_client, 'utf-8') + len(json).to_bytes(4, "big")
                                                      + len(data).to_bytes(4, "big"))
-                self._socks['client to server'].send(bytes(id_fog_node, 'utf-8') + bytes(request, 'utf-8') + data)
-                break
-            except:
+                self._socks['client to server'].send(bytes(id_client, 'utf-8') + bytes(json, 'utf-8') + data)
+                return self._receive_data(self._socks['client to server'])
+            except Exception as e:
                 pass
             time.sleep(0.1)
 
-        return self._receive_request(self, self._socks['client to server'])
-
-    def _receiver(self):
+    def _receiver(self, socks):
         while True:
             # Ждем пока придет запрос от сервера
-            response = self._receive_request(self, self._socks['server to client'])
+            rec_ok = True
+            try:
+                # принимаем длину получаемых данных
+                length_json = int.from_bytes(socks.recv(4), 'big')
+                length_data = int.from_bytes(socks.recv(4), 'big')
+                json = _json.loads(socks.recv(length_json).decode('utf-8'))
+                data = socks.recv(length_data)
+            except:
+                # если обрыв соединения
+                rec_ok = False
 
             # Если произошел сброс соединения
-            if not response:
+            if not rec_ok:
                 if not self._stoping:
                     self._stoping = True
                     self._break_stoping = True
@@ -118,24 +129,27 @@ class ClientDCTP(Thread):
                 break
 
             # Если в запросе от сервера пришел error
-            if 'error' in response.keys():
+            if 'error' in json.keys():
                 self._stoping = True
-                raise Exception(response["error"])
+                raise Exception(json["error"])
+
 
             # готовим ответ серверу
-            response = self._dict_methods_call[response['method']](response['data'])
+            if json['method'] in self._dict_methods_call:
+                response = self._dict_methods_call[json['method']](json=json['json'], data=data)
+                # если в ответе ни чего нет то создаем ответ
+                if response is None:
+                    response = {}
 
-            # если в ответе ни чего нет то создаем ответ
-            if response is None:
-                response = {}
-
-            # Дополняем статус возврата, если его нет по умолчанию ОК
-            if 'status' not in response.keys():
-                response['status'] = 0
-                response['status text'] = _DCTP_STATUS_CODE[0]
-
+                # Дополняем статус возврата, если его нет по умолчанию ОК
+                if 'status' not in response.keys():
+                    response['status'] = 0
+                    response['status text'] = _DCTP_STATUS_CODE[0]
+            else:
+                response['status'] = 100
+                response['status text'] = _DCTP_STATUS_CODE[100]
             # отправляем ответ серверу
-            self._send_request(self._socks['server to client'], response)
+            self._send_data(self._socks['server to client'], response)
 
     def method(self, name_method):
         # Декоратор. Храним ссылки на функции запросов от сервера по их названиям
@@ -183,20 +197,17 @@ class ServerDCTP(Thread):
                     # проверяем подключен ли клиент уже
                     if response["worker_id"] in self._workers.keys() and \
                             response["type"] in self._workers[response["worker_id"]].keys():
-                        self._send_request(worker_sock, {'error': f'client {response["worker_id"]} already connect'})
+                        self._send_data(worker_sock, json={'error': f'client {response["worker_id"]} already connect'})
                         print_warning(f'client {response["worker_id"]} already connect')
                         continue
                     else:
                         # проверка на валидность подключения через вызываемую функцию-декоратор connect_valid_client
-                        valid_connect = None
-                        try:
+                        valid_connect = True
+                        if "connect_valid_client" in self._dict_methods_call:
                             valid_connect = self._dict_methods_call["connect_valid_client"](
                                 json={"address": response["worker_id"]})
                             if type(valid_connect) is not bool:
                                 valid_connect = False
-                        except KeyError as e:
-                            if 'connect_valid_client' in e.args:
-                                valid_connect = True
 
                         # регистрируем клиента
                         if valid_connect:
@@ -210,21 +221,33 @@ class ServerDCTP(Thread):
                                 receiver_thread = Thread(target=self._receiver,
                                                          args=(worker_sock, response['worker_id']))
                                 receiver_thread.start()
+                            elif response['type'] == "server to client" and "on_connected" in self._dict_methods_call:
+                                self._dict_methods_call["on_connected"](json={"address": response["worker_id"]})
                         else:
-                            self._send_request(worker_sock, {'error': f'client {response["worker_id"]} is not valid'})
+                            self._send_data(worker_sock, json={'error': f'client {response["worker_id"]} is not valid'})
                             print_warning(f'client {response["worker_id"]} is not valid')
             except KeyboardInterrupt:
                 self._sock.close()
 
     @staticmethod
-    def _send_request(sock, data=None):
+    def _send_data(sock, json={}):
         # Отправляем два запроса
         # 1 - размер 2
         # 2 - бинарные данные data
+        json = _json.dumps(json)
 
-        request = _json.dumps(data)
-        sock.send(len(request).to_bytes(4, "big"))
-        sock.send(bytes(request, 'utf-8'))
+        sock.send(len(json).to_bytes(4, "big"))
+        sock.send(bytes(json, 'utf-8'))
+
+    def _receive_data(self, sock):
+        try:
+            # принимаем длину получаемых данных
+            length_response = int.from_bytes(sock.recv(4), 'big')
+            # принимаем данные
+            return _json.loads(sock.recv(length_response).decode('utf-8'))
+        except:
+            # если обрыв соединения
+            return
 
     def _receiver(self, sock, worker_id):
         # Ждем пока придет запрос и вызываем соответствующий метод
@@ -253,7 +276,7 @@ class ServerDCTP(Thread):
                         response['status'] = 0
                         response['status text'] = _DCTP_STATUS_CODE[0]
                     self._clients.pop(address_response)
-                    self._send_request(sock, response)
+                    self._send_data(sock, json=response)
                 else:
                     self._clients[address_response] = {'json': int.from_bytes(sock.recv(4), 'big'),
                                                        'data': int.from_bytes(sock.recv(4), 'big')}
@@ -262,17 +285,29 @@ class ServerDCTP(Thread):
                     # print(f'Client {worker_id} разорвал соединение')
                     sock.close()
                     self._workers.pop(worker_id)
-
+                    if 'on_disconnected' in  self._dict_methods_call:
+                        self._dict_methods_call['on_disconnected'](json={"address": worker_id})
                 break
 
-    def request(self, id_worker, method, data=None):
-        # Подготавливаем данные к отправке запроса
+    def request(self, id_worker, method, json={}, data=b''):
+        # Отправляем запрос клиенту и принимаем ответ
+        if type(data) != bytes:
+            raise Exception('Parameter data is not bytes')
+        try:
+            json = _json.dumps({'method': method, 'json': json})
+        except:
+            raise Exception(f'Parameter json as {type(json)} is not parsing to json')
+
         while True:
             try:
-                self._send_request(self._workers[id_worker]['server to client'], {'method': method, 'data': data})
-                break
+                sock = self._workers[id_worker]['server to client']
+                sock.send(len(json).to_bytes(4, "big") + len(data).to_bytes(4, "big"))
+                sock.send(bytes(json, 'utf-8') + data)
+
+                return self._receive_data(self._workers[id_worker]['server to client'])
             except:
                 time.sleep(0.1)
+
 
     def method(self, name_method):
         # Декоратор. Храним ссылки на функции методов по их названиям

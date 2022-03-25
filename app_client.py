@@ -1,26 +1,22 @@
-from argparse import ArgumentParser
+import random
 from datetime import datetime
 import json
 import os
-import sys
 import time
 from threading import Thread
-
 from PyQt5.QtCore import Qt
 import requests
 from PyQt5.QtGui import QColor
-from PyQt5.QtWidgets import QApplication, QFileDialog, QMainWindow, QDesktopWidget, \
+from PyQt5.QtWidgets import QLineEdit, QFileDialog, QMainWindow, QDesktopWidget, \
     QInputDialog, QTableWidget, QTableWidgetItem, QAbstractItemView, QMessageBox, QTabWidget, \
-    QFrame, QMenu, QAction, QHeaderView, QLabel, QVBoxLayout, QHBoxLayout
+    QFrame, QMenu, QAction, QHeaderView, QLabel, QVBoxLayout, QHBoxLayout, QDialog
 from _pysha3 import sha3_256
-
 from fog_nodes_manager import ManagerFogNodes
-from utils import exists_path, LoadJsonFile, SaveJsonFile
+from utils import exists_path, LoadJsonFile, SaveJsonFile, get_pools_host
 from pool import Pool
 from wallet import Wallet
 from fog_node import SIZE_REPLICA
-from clients_manager import DispatcherClientsManager
-from variables import PORT_DISPATCHER_CLIENTS_MANAGER, POOL_FN_PORT, POOL_PORT, POOL_CM_PORT
+from variables import PORT_DISPATCHER_CLIENTS_MANAGER, DNS_NAME
 
 
 class AppClient(QMainWindow):
@@ -29,15 +25,18 @@ class AppClient(QMainWindow):
 
         self.pool = None
         self.client_storages = {}
-        self._address_pool = None
+        self._address_pool = ''
         self.load_params()
-        self.full_amount = 0
-        self.occupied_amount = 0
+        self.current_client_storage_full_amount = 0
+        self.current_client_storage_occupied_amount = 0
         self.last_response_hash = 0
+        self.pool_balance = 0
+
+        self.initUI()
 
         if exists_path('data/pool/key'):
             self.start_pool()
-        self.initUI()
+
         update_data_thread = Thread(target=self.update_data)
         update_data_thread.start()
 
@@ -186,12 +185,20 @@ class AppClient(QMainWindow):
         self.exitAction = QAction("Exit", self)
         self.exitAction.triggered.connect(self.close)
 
+        self.sendByteExAction = QAction("Send ByteEx", self)
+        self.sendByteExAction.setEnabled(False)
+        self.sendByteExAction.triggered.connect(self.send_byteEx)
+
         # ---------------
         # Action Client Storages
         # ---------------
         self.createClientStorageAction = QAction("Create client storage", self)
         self.createClientStorageAction.setEnabled(False)
         self.createClientStorageAction.triggered.connect(self.create_client_storage)
+
+        self.createClientStorageActionForPool = QAction("Create client storage", self)
+        self.createClientStorageActionForPool.setEnabled(False)
+        self.createClientStorageActionForPool.triggered.connect(self.create_client_storage_for_pool)
 
         self.sendFileAction = QAction('Send file', self)
         self.sendFileAction.triggered.connect(self.send_file)
@@ -227,8 +234,8 @@ class AppClient(QMainWindow):
             self.setWindowTitle("DeCloud  —  " + self._current_address_client_storage)
             clientStoragesMenu = fileMenu.addMenu("Open Storages")
             self.addresses_action = []
-            if not self.client_storages:
-                clientStoragesMenu.setEnabled(False)
+            clientStoragesMenu.setEnabled(bool(self.client_storages))
+            self.sendByteExAction.setEnabled(bool(self.client_storages))
 
             for name in list(self.client_storages.keys()):
                 self.addresses_action.append(QAction(name, self))
@@ -243,18 +250,20 @@ class AppClient(QMainWindow):
         # Pool
         elif self.tab.currentIndex() == 1:
             fileMenu.addAction(self.createPoolAction)
+            self.createPoolAction.setEnabled(not self._address_pool)
+            self.sendByteExAction.setEnabled(bool(self._address_pool))
+            self.setWindowTitle("DeCloud  —  " + self._address_pool)
+            self.createClientStorageActionForPool.setEnabled(bool(self._address_pool) and
+                                                             self._address_pool not in self.client_storages)
 
-            if self._address_pool:
-                self.setWindowTitle("DeCloud  —  " + self._address_pool)
-                self.createPoolAction.setEnabled(False)
-            else:
-                self.setWindowTitle("DeCloud")
         # Fog nodes
         elif self.tab.currentIndex() == 2:
             self.setWindowTitle("DeCloud")
             self.fogNodesWidget.setFocus()
+            self.sendByteExAction.setEnabled(bool(self.fogNodesWidget.rowCount()))
             fileMenu.addAction(self.createNodeAction)
 
+        fileMenu.addAction(self.sendByteExAction)
         fileMenu.addSeparator()
         fileMenu.addAction(self.exitAction)
 
@@ -271,7 +280,7 @@ class AppClient(QMainWindow):
             editMenu.addAction(self.sendFileAction)
         # Pool
         elif self.tab.currentIndex() == 1:
-            pass
+            editMenu.addAction(self.createClientStorageActionForPool)
         # Fog nodes
         elif self.tab.currentIndex() == 2:
             editMenu.addAction(self.createClientStorageAction)
@@ -299,20 +308,42 @@ class AppClient(QMainWindow):
         for i in range(self.fogNodesWidget.rowCount()):
             if self.fogNodesWidget.item(i, 0).text() == address:
                 self.labelAmountClient.setText(self.fogNodesWidget.item(i, 2).text())
-                self.full_amount = int(self.fogNodesWidget.item(i, 3).text())
+                self.current_client_storage_full_amount = int(self.fogNodesWidget.item(i, 3).text())
                 self.save_params()
                 break
 
+    def send_byteEx(self):
+        if self.tab.currentIndex() == 0:
+            sender = self._current_address_client_storage
+        elif self.tab.currentIndex() == 1:
+            sender = self._address_pool
+        elif self.tab.currentIndex() == 2:
+            sender = self.fogNodesWidget.item(self.fogNodesWidget.currentRow(), 0).text()
+
+        Send_ByteEx(sender).execute()
+
     def update_data(self):
         while True:
-            try:
-                #self.labelAmountPool.setText(self.amount_format(
-                #requests.get(f'http://127.0.0.1:{PORT_DISPATCHER_CLIENTS_MANAGER}/'
-                #             f'api/get_pool_balance/{self._address_pool}').json()['amount']))
+            if self._address_pool:
+                try:
+                    response = requests.get(f'http://{DNS_NAME}:{PORT_DISPATCHER_CLIENTS_MANAGER}/'
+                                            f'api/get_balance/{self._address_pool}')
 
+                    if response.status_code == 200 and self.pool_balance != response:
+                        response = response.json()
+                        self.pool_balance = response
+                        new_balance = self.amount_format(response)
+                        self.labelAmountPool.setText(new_balance)
+                        if self._address_pool == self._current_address_client_storage:
+                            self.labelAmountClient.setText(new_balance)
+                            self.current_client_storage_full_amount = response
+                    else:
+                        time.sleep(1)
+                        continue
+                except:
+                    time.sleep(1)
+            if self._current_address_client_storage:
                 self.show_current_dir()
-            except:
-                pass
             time.sleep(15)
 
     def save_params(self):
@@ -371,7 +402,7 @@ class AppClient(QMainWindow):
             if self.fogNodesWidget.item(i, 0).text() == data['id_fog_node']:
                 if self._current_address_client_storage == data['id_fog_node']:
                     self.labelAmountClient.setText(self.amount_format(data["amount"]))
-                    self.full_amount = data["amount"]
+                    self.current_client_storage_full_amount = data["amount"]
                 self.fogNodesWidget.setItem(i, 2, QTableWidgetItem(self.amount_format(data['amount'])))
                 self.fogNodesWidget.setItem(i, 3, QTableWidgetItem(str(data['amount'])))
                 self.fogNodesWidget.item(i, 2).setTextAlignment(Qt.AlignRight)
@@ -386,12 +417,9 @@ class AppClient(QMainWindow):
         except Exception as e:
             print(e)
         self._address_pool = Wallet(LoadJsonFile('data/pool/key').as_list()[0]).address
-        while True:
-            try:
-                requests.get(f'http://127.0.0.1:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/register_pool/{self._address_pool}')
-                break
-            except:
-                time.sleep(0.1)
+        self.setWindowTitle("DeCloud  —  " + self._address_pool)
+        self.sendByteExAction.setEnabled(True)
+        self.createPoolAction.setEnabled(False)
 
     def current_change_client_storage(self, row):
         self.createClientStorageAction.setEnabled(
@@ -423,6 +451,19 @@ class AppClient(QMainWindow):
                 self._createMenuBar()
                 return
 
+    def create_client_storage_for_pool(self):
+        key = LoadJsonFile('data/pool/key').as_list()[0]
+        self.client_storages[self._address_pool] = {'wallet': Wallet(key), 'id_current_dir': None}
+        self.client_storages[self._address_pool]['wallet'].save_private_key('data/clients_manager/key')
+        self.setWindowTitle("DeCloud  —  " + self._address_pool)
+        self.labelAmountClient.setText(self.labelAmountPool.text())
+        self.current_client_storage_full_amount = self.pool_balance
+        self.set_current_address_client_storage(self._address_pool)
+        self.current_id_dir = None
+        self.show_current_dir()
+        self.tab.setCurrentIndex(0)
+        self._createMenuBar()
+
     def create_node(self):
         # Создаем новую node
         self.mfn.add_fog_node()
@@ -438,7 +479,7 @@ class AppClient(QMainWindow):
                 if text == '..':
                     QMessageBox.critical(self, "Ошибка", "Не корректное имя файла", QMessageBox.Ok)
                 else:
-                    if 400 + self.occupied_amount > self.full_amount:
+                    if 400 + self.current_client_storage_occupied_amount > self.current_client_storage_full_amount:
                         QMessageBox.critical(self, "Ошибка", "Не хватает места", QMessageBox.Ok)
                         return
                     data = {'name': text}
@@ -446,7 +487,7 @@ class AppClient(QMainWindow):
                     if id_current_dir:
                         data['id_current_dir'] = id_current_dir
                     data = self.signed_data_request(data)
-                    response = requests.get(f'http://127.0.0.1:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/make_dir',
+                    response = requests.get(f'http://{DNS_NAME}:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/make_dir',
                                             json=data).json()
                     if 'error' in response:
                         QMessageBox.critical(self, "Error", response['error'], QMessageBox.Ok)
@@ -461,7 +502,8 @@ class AppClient(QMainWindow):
         else:
             path = QFileDialog.getOpenFileName(self, "Select a file...", None, filter="All files (*)")[0]
             if path != "":
-                if os.path.getsize(path) + self.occupied_amount > self.full_amount:
+                if os.path.getsize(path) + self.current_client_storage_occupied_amount > \
+                        self.current_client_storage_full_amount:
                     QMessageBox.critical(self, "Ошибка", "Не хватает места", QMessageBox.Ok)
                     return
                 file_name = path.split('/')[-1]
@@ -479,7 +521,7 @@ class AppClient(QMainWindow):
                     params['id_current_dir'] = id_current_dir
 
                 params = self.signed_data_request(params)
-                response = requests.post(f'http://127.0.0.1:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/save_file',
+                response = requests.post(f'http://{DNS_NAME}:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/save_file',
                                          params=params,
                                          data=self.chunking(path)).json()
                 if 'error' in response:
@@ -510,7 +552,7 @@ class AppClient(QMainWindow):
             data['id_object'] = self.current_id_dir
         while True:
             try:
-                response = requests.get(f'http://127.0.0.1:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/get_object',
+                response = requests.get(f'http://{DNS_NAME}:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/get_object',
                                         params=data).json()
                 break
             except:
@@ -520,8 +562,8 @@ class AppClient(QMainWindow):
             return
         self.last_response_hash = sha3_256(bytes(json.dumps(response), 'utf-8')).digest()
 
-        self.occupied_amount = response['occupied']
-        self.labelOccupiedAmount.setText(self.amount_format(self.occupied_amount))
+        self.current_client_storage_occupied_amount = response['occupied']
+        self.labelOccupiedAmount.setText(self.amount_format(self.current_client_storage_occupied_amount))
         self.clientStoragesExplorer.setRowCount(sum([(len(response[type])) for type in ['dirs', 'files']]))
         row = 0
         for type in ['dirs', 'files']:
@@ -559,7 +601,7 @@ class AppClient(QMainWindow):
             # Передаем id объекта, если создаем новую директорию или открываем файл
             data['id_object'] = id_obj
 
-        response = requests.get(f'http://127.0.0.1:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/get_object',
+        response = requests.get(f'http://{DNS_NAME}:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/get_object',
                                 params=data)
 
         # Сохраняем во временные файлы и открываем
@@ -571,12 +613,54 @@ class AppClient(QMainWindow):
         os.startfile(file_name)
 
 
-if __name__ == '__main__':
-    app = QApplication(sys.argv)
+class Send_ByteEx(QDialog):
+    def __init__(self, sender: str):
+        super().__init__()
 
-    dispatcher = DispatcherClientsManager(PORT_DISPATCHER_CLIENTS_MANAGER)
-    dispatcher.start()
+        from PyQt5.QtGui import QIntValidator
+        from PyQt5.QtWidgets import QDialog, QGridLayout, QDialogButtonBox
+        self.resize(500, 200)
+        layoutv = QVBoxLayout()
 
-    client_manager = AppClient()
-    client_manager.show()
-    sys.exit(app.exec_())
+        grid = QGridLayout()
+        grid.setSpacing(10)
+
+        textSender = QLabel('Sender: ')
+        self.lineEditSender = QLineEdit(sender)
+        grid.addWidget(textSender, 1, 0)
+        grid.addWidget(self.lineEditSender, 1, 1)
+
+        textOwner = QLabel('Owner: ')
+        self.lineEditOwner = QLineEdit()
+        grid.addWidget(textOwner, 2, 0)
+        grid.addWidget(self.lineEditOwner, 2, 1)
+
+        textAmount = QLabel('Amount ByteEx: ')
+        self.lineEditAmount = QLineEdit()
+        self.lineEditAmount.setValidator(QIntValidator(0, 100000, self))
+        grid.addWidget(textAmount, 3, 0)
+        grid.addWidget(self.lineEditAmount, 3, 1)
+
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+
+        layoutv.addLayout(grid)
+        layoutv.addStretch(1)
+        layoutv.addWidget(button_box)
+
+        self.setLayout(layoutv)
+        self.setWindowTitle("Send ByteEx")
+
+    def execute(self):
+        if self.exec() == QDialog.Accepted:
+            response = requests.get(
+                f'http://{DNS_NAME}:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/get_free_balance/{self.lineEditSender.text()}')
+            if response.status_code == 200:
+                free_balance = response.json()
+                amount = int(self.lineEditAmount.text())
+                if amount <= free_balance:
+                    transaction = {'sender': self.lineEditSender.text(), 'owner': self.lineEditOwner.text(),
+                                   'count': amount}
+                    response = requests.post(f'http://{DNS_NAME}:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/new_transaction',
+                                            json=transaction)
