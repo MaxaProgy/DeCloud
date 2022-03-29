@@ -1,455 +1,119 @@
-import random
-from datetime import datetime
-import json
-import os
-import time
-from threading import Thread
-from PyQt5.QtCore import Qt
-import requests
 from PyQt5.QtGui import QColor
-from PyQt5.QtWidgets import QLineEdit, QFileDialog, QMainWindow, QDesktopWidget, \
-    QInputDialog, QTableWidget, QTableWidgetItem, QAbstractItemView, QMessageBox, QTabWidget, \
-    QFrame, QMenu, QAction, QHeaderView, QLabel, QVBoxLayout, QHBoxLayout, QDialog
-from _pysha3 import sha3_256
-from fog_nodes_manager import ManagerFogNodes
-from utils import exists_path, LoadJsonFile, SaveJsonFile, get_pools_host
-from pool import Pool
+from PyQt5.QtWidgets import QMainWindow, QDesktopWidget, QTabWidget, QFrame, QMenu, QAction, QTabBar, QToolButton, \
+    QLabel
+from widgets import FogNodesWidget, PoolWidget, ClientStorageWidget, SearchClientStorage
+from utils import exists_path, LoadJsonFile, SaveJsonFile
 from wallet import Wallet
-from fog_node import SIZE_REPLICA
-from variables import PORT_DISPATCHER_CLIENTS_MANAGER, DNS_NAME
 
 
 class AppClient(QMainWindow):
     def __init__(self):
         super().__init__()
-
-        self.pool = None
-        self.client_storages = {}
         self._address_pool = ''
-        self.load_params()
-        self.current_client_storage_full_amount = 0
-        self.current_client_storage_occupied_amount = 0
-        self.last_response_hash = 0
-        self.pool_balance = 0
-
+        #self.load_params()
         self.initUI()
 
-        if exists_path('data/pool/key'):
-            self.start_pool()
-
-        update_data_thread = Thread(target=self.update_data)
-        update_data_thread.start()
 
     def initUI(self):
         self.geometry = QDesktopWidget().availableGeometry()
         self.setGeometry(1000, 1000, 1000, 800)
         self.move(500, 100)
 
-        self.mfn = ManagerFogNodes()
-        self.mfn.load_fog_nodes('data/fog_nodes/key')
-        self.mfn.on_change_balance = self.on_change_balance
-        self.mfn.on_change_state = self.on_change_state
+        self.poolWidget = PoolWidget()
 
-        # -----------------------------
-        # Widgets tab - Client Storages
-        # -----------------------------
-
-        tabClientStorages = QFrame()
-        layoutClientStorages = QVBoxLayout()
-
-        for key in LoadJsonFile('data/clients_manager/key').as_list():
-            wallet = Wallet(key)
-            if self._current_address_client_storage == '':
-                self._current_address_client_storage = wallet.address
-                self.save_params()
-            self.client_storages[wallet.address] = {'wallet': wallet, 'id_current_dir': None}
-
-        layoutAllBalance = QHBoxLayout()
-        self.labelAllBalanceClient = QLabel('Полный баланс: ')
-        self.labelAmountClient = QLabel()
-        layoutAllBalance.addStretch(1)
-        layoutAllBalance.addWidget(self.labelAllBalanceClient)
-        layoutAllBalance.addWidget(self.labelAmountClient)
-
-        layoutOccupiedBalance = QHBoxLayout()
-        self.labelOccupiedBalance = QLabel('Использовано: ')
-        self.labelOccupiedAmount = QLabel()
-        layoutOccupiedBalance.addStretch(1)
-        layoutOccupiedBalance.addWidget(self.labelOccupiedBalance)
-        layoutOccupiedBalance.addWidget(self.labelOccupiedAmount)
-
-        self.clientStoragesExplorer = QTableWidget()
-        labels = ['Id', 'Name', 'Date', 'Type', 'Size']
-        self.clientStoragesExplorer.setColumnCount(len(labels))
-        self.clientStoragesExplorer.setHorizontalHeaderLabels(labels)
-        self.clientStoragesExplorer.verticalHeader().hide()
-        self.clientStoragesExplorer.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.clientStoragesExplorer.setShowGrid(False)
-        self.clientStoragesExplorer.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        self.clientStoragesExplorer.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        self.clientStoragesExplorer.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        self.clientStoragesExplorer.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        self.clientStoragesExplorer.setColumnHidden(0, True)
-        self.clientStoragesExplorer.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.clientStoragesExplorer.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.clientStoragesExplorer.itemDoubleClicked.connect(self.open_object)
-        if self.client_storages:
-            self.current_id_dir = None
-            self.show_current_dir()
-
-        layoutClientStorages.addLayout(layoutAllBalance)
-        layoutClientStorages.addLayout(layoutOccupiedBalance)
-        layoutClientStorages.addWidget(self.clientStoragesExplorer)
-        tabClientStorages.setLayout(layoutClientStorages)
-
-        # -----------------------------
-        # Widgets tab - Pool
-        # -----------------------------
-        tabPool = QFrame()
-        layoutTabPool = QVBoxLayout()
-
-        layoutAllBalancePool = QHBoxLayout()
-        self.labelAllBalancePool = QLabel('Полный баланс: ')
-        self.labelAmountPool = QLabel(self.amount_format(0))
-        layoutAllBalancePool.addStretch(1)
-        layoutAllBalancePool.addWidget(self.labelAllBalancePool)
-        layoutAllBalancePool.addWidget(self.labelAmountPool)
-
-        layoutTabPool.addLayout(layoutAllBalancePool)
-        layoutTabPool.addStretch(1)
-        tabPool.setLayout(layoutTabPool)
-
-        # -----------------------------
-        # Widgets tab - Fog Nodes
-        # -----------------------------
         tabFogNodes = QFrame()
-        layoutFogNodes = QVBoxLayout()
-
-        self.fogNodesWidget = QTableWidget()
-        labels = ['Name', 'State', 'Amount', 'Full amount']
-        self.fogNodesWidget.setColumnCount(len(labels))
-        self.fogNodesWidget.setHorizontalHeaderLabels(labels)
-        self.fogNodesWidget.verticalHeader().hide()
-        self.fogNodesWidget.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.fogNodesWidget.setShowGrid(False)
-        self.fogNodesWidget.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.fogNodesWidget.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        self.fogNodesWidget.setColumnHidden(3, True)
-        self.fogNodesWidget.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.fogNodesWidget.setSelectionMode(QAbstractItemView.SingleSelection)
-        for key in LoadJsonFile('data/fog_nodes/key').as_list():
-            wallet = Wallet(key)
-            address = wallet.address
-            row = self.fogNodesWidget.rowCount()
-            self.fogNodesWidget.setRowCount(row + 1)
-            self.fogNodesWidget.setItem(row, 0, QTableWidgetItem(address))
-            if address in self.client_storages.keys():
-                self.fogNodesWidget.item(row, 0).setForeground(QColor('green'))
-        self.fogNodesWidget.setSortingEnabled(True)
-        self.fogNodesWidget.sortByColumn(0, Qt.AscendingOrder)
-        self.fogNodesWidget.setCurrentCell(0, 0)
-        self.fogNodesWidget.currentCellChanged.connect(self.current_change_client_storage)
-
-        layoutFogNodes.addWidget(self.fogNodesWidget)
-        tabFogNodes.setLayout(layoutFogNodes)
+        self.fogNodesWidget = FogNodesWidget()
+        self.fogNodesWidget.createPool.connect(self.start_pool)
+        self.fogNodesWidget.changeBalance.connect(self.change_balance)
+        self.fogNodesWidget.createClientStorage.connect(self.create_and_open_client_storage)
+        tabFogNodes.setLayout(self.fogNodesWidget)
 
         self.tab = QTabWidget()
-        self.tab.addTab(tabClientStorages, "Client Storages")
-        self.tab.addTab(tabPool, "Pool")
+        self.tab.setTabsClosable(True)
+        self.tab.tabCloseRequested.connect(self.closeTab)
+
         self.tab.addTab(tabFogNodes, "Fog Nodes")
 
-        self.tab.currentChanged.connect(self._createMenuBar)
+        self.tab.addTab(QLabel(""), '')
+        self.addTabButton = QToolButton()
+        self.addTabButton.setText('+')
+        self.addTabButton.clicked.connect(self.new_window)
+        self.tab.tabBar().setTabButton(self.tab.count() - 1, QTabBar.RightSide, self.addTabButton)
+        self.tab.setTabEnabled(self.tab.count() - 1, False)
         self.setCentralWidget(self.tab)
 
-        self._createActions()
-        self._createMenuBar()
-
         self.setWindowTitle("DeCloud")
-        if self._current_address_client_storage:
-            self.setWindowTitle("DeCloud  —  " + self._current_address_client_storage)
 
-        if exists_path('data/pool/key'):
-            self.createPoolAction.setEnabled(False)
+    def new_window(self):
+        tabSearch = QFrame()
+        search = SearchClientStorage()
+        tabSearch.setLayout(search)
+
+        self.tab.insertTab(self.tab.count() - 1, tabSearch, 'New tab')
+        self.tab.setCurrentIndex(self.tab.count() - 2)
+
+
+
+    def change_balance(self, address, amount):
+        if address == self._address_pool:
+            self.poolWidget.change_balance_pool(amount)
+
+        for i in range(self.tab.count()):
+            if self.tab.tabText(i) == address:
+                self.tab.widget(i).findChild(ClientStorageWidget).change_balance(amount)
+
+    def closeTab(self, ind):  # метод закрывает вкладку под номером ind
+        self.tab.removeTab(ind)
+
+    def start_pool(self, private_key):
+        if not self.poolWidget.is_run():
+            self.poolWidget.start_pool(private_key)
+            self._address_pool = Wallet(private_key).address
+
+        index = self._get_index_name_tab('Pool')
+        if index > -1:
+            self.tab.setCurrentIndex(index)
+        else:
+            tabPool = QFrame()
+            tabPool.setLayout(self.poolWidget)
+            self.tab.insertTab(self.tab.count() - 1, tabPool, "Pool")
+            self.tab.setCurrentIndex(self.tab.count() - 2)
 
     def closeEvent(self, event):
         self.showMinimized()
         event.ignore()
 
-    def _createActions(self):
-        self.newAction = QAction(self)
-
-        # ---------------
-        # Main Action
-        # ---------------
-
-        self.exitAction = QAction("Exit", self)
-        self.exitAction.triggered.connect(self.close)
-
-        self.sendByteExAction = QAction("Send ByteEx", self)
-        self.sendByteExAction.setEnabled(False)
-        self.sendByteExAction.triggered.connect(self.send_byteEx)
-
-        # ---------------
-        # Action Client Storages
-        # ---------------
-        self.createClientStorageAction = QAction("Create client storage", self)
-        self.createClientStorageAction.setEnabled(False)
-        self.createClientStorageAction.triggered.connect(self.create_client_storage)
-
-        self.createClientStorageActionForPool = QAction("Create client storage", self)
-        self.createClientStorageActionForPool.setEnabled(False)
-        self.createClientStorageActionForPool.triggered.connect(self.create_client_storage_for_pool)
-
-        self.sendFileAction = QAction('Send file', self)
-        self.sendFileAction.triggered.connect(self.send_file)
-
-        self.createDirAction = QAction("Create directory", self)
-        self.createDirAction.triggered.connect(self.create_dir)
-
-        # ---------------
-        # Action Pool
-        # ---------------
-
-        self.createPoolAction = QAction("Create Pool", self)
-        self.createPoolAction.triggered.connect(self.start_pool)
-
-        # ---------------
-        # Action Fog Nodes
-        # ---------------
-        self.createNodeAction = QAction("Create node", self)
-        self.createNodeAction.triggered.connect(self.create_node)
-
-    def _createMenuBar(self):
-        menuBar = self.menuBar()
-        menuBar.clear()
-
-        # ---------------
-        # Menu File
-        # ---------------
-        fileMenu = QMenu("File", self)
-        menuBar.addMenu(fileMenu)
-
-        # Client Storages
-        if self.tab.currentIndex() == 0:
-            self.setWindowTitle("DeCloud  —  " + self._current_address_client_storage)
-            clientStoragesMenu = fileMenu.addMenu("Open Storages")
-            self.addresses_action = []
-            clientStoragesMenu.setEnabled(bool(self.client_storages))
-            self.sendByteExAction.setEnabled(bool(self.client_storages))
-
-            for name in list(self.client_storages.keys()):
-                self.addresses_action.append(QAction(name, self))
-                self.addresses_action[-1].triggered.connect(self.change_client_storage_address)
-                clientStoragesMenu.addAction(self.addresses_action[-1])
-
-                if self.addresses_action[-1].text() == self._current_address_client_storage:
-                    self.addresses_action[-1].setCheckable(True)
-                    self.addresses_action[-1].setChecked(True)
-                else:
-                    self.addresses_action[-1].setCheckable(False)
-        # Pool
-        elif self.tab.currentIndex() == 1:
-            fileMenu.addAction(self.createPoolAction)
-            self.createPoolAction.setEnabled(not self._address_pool)
-            self.sendByteExAction.setEnabled(bool(self._address_pool))
-            self.setWindowTitle("DeCloud  —  " + self._address_pool)
-            self.createClientStorageActionForPool.setEnabled(bool(self._address_pool) and
-                                                             self._address_pool not in self.client_storages)
-
-        # Fog nodes
-        elif self.tab.currentIndex() == 2:
-            self.setWindowTitle("DeCloud")
-            self.fogNodesWidget.setFocus()
-            self.sendByteExAction.setEnabled(bool(self.fogNodesWidget.rowCount()))
-            fileMenu.addAction(self.createNodeAction)
-
-        fileMenu.addAction(self.sendByteExAction)
-        fileMenu.addSeparator()
-        fileMenu.addAction(self.exitAction)
-
-        # ---------------
-        # Menu Edit
-        # ---------------
-        editMenu = menuBar.addMenu("Edit")
-
-        # Client Storages
-        if self.tab.currentIndex() == 0:
-            if not self.client_storages:
-                editMenu.setEnabled(False)
-            editMenu.addAction(self.createDirAction)
-            editMenu.addAction(self.sendFileAction)
-        # Pool
-        elif self.tab.currentIndex() == 1:
-            editMenu.addAction(self.createClientStorageActionForPool)
-        # Fog nodes
-        elif self.tab.currentIndex() == 2:
-            editMenu.addAction(self.createClientStorageAction)
-
-        # ---------------
-        # Menu Help
-        # ---------------
-        helpMenu = menuBar.addMenu("Help")
-
-    @staticmethod
-    def chunking(file_name):
-        size_file = os.stat(file_name).st_size
-        with open(file_name, 'rb') as f:
-            count = 0
-            while True:
-                data = f.read(SIZE_REPLICA)
-                if not data:
-                    break
-                count += 1
-                print((count * 100) // (size_file // SIZE_REPLICA + (size_file % SIZE_REPLICA != 0)), "%")
-                yield data
-
-    def set_current_address_client_storage(self, address):
-        self._current_address_client_storage = address
-        for i in range(self.fogNodesWidget.rowCount()):
-            if self.fogNodesWidget.item(i, 0).text() == address:
-                self.labelAmountClient.setText(self.fogNodesWidget.item(i, 2).text())
-                self.current_client_storage_full_amount = int(self.fogNodesWidget.item(i, 3).text())
-                self.save_params()
-                break
-
-    def send_byteEx(self):
-        if self.tab.currentIndex() == 0:
-            sender = self._current_address_client_storage
-        elif self.tab.currentIndex() == 1:
-            sender = self._address_pool
-        elif self.tab.currentIndex() == 2:
-            sender = self.fogNodesWidget.item(self.fogNodesWidget.currentRow(), 0).text()
-
-        Send_ByteEx(sender).execute()
-
-    def update_data(self):
-        while True:
-            if self._address_pool:
-                try:
-                    response = requests.get(f'http://{DNS_NAME}:{PORT_DISPATCHER_CLIENTS_MANAGER}/'
-                                            f'api/get_balance/{self._address_pool}')
-
-                    if response.status_code == 200 and self.pool_balance != response:
-                        response = response.json()
-                        self.pool_balance = response
-                        new_balance = self.amount_format(response)
-                        self.labelAmountPool.setText(new_balance)
-                        if self._address_pool == self._current_address_client_storage:
-                            self.labelAmountClient.setText(new_balance)
-                            self.current_client_storage_full_amount = response
-                    else:
-                        time.sleep(1)
-                        continue
-                except:
-                    time.sleep(1)
-            if self._current_address_client_storage:
-                self.show_current_dir()
-            time.sleep(15)
-
     def save_params(self):
-        SaveJsonFile('data/clients_manager/save_params', data=self._current_address_client_storage)
+        pass
 
     def load_params(self):
-        self._current_address_client_storage = LoadJsonFile('data/clients_manager/save_params').as_string()
+        pass
 
-    def get_current_client_wallet(self):
-        # Получить кошелек
-        wallet = self.client_storages[self._current_address_client_storage]['wallet']
-        return wallet
+    def _get_index_name_tab(self, address):
+        for i in range(self.tab.count()):
+            if address == self.tab.tabText(i):
+                return i
+        return -1
 
-    def signed_data_request(self, data=None):
-        # Формируем request и подписываем
-        if data is None:
-            data = {}
-        wallet = self.get_current_client_wallet()
-        data['public_key'] = wallet.public_key
-        data['address'] = wallet.address
-        data['sign'] = wallet.sign(data)
+    def create_and_open_client_storage(self, address):
+        index = self._get_index_name_tab(address)
+        if index >= 0:
+            self.tab.setCurrentIndex(index)
+        else:
+            for key in LoadJsonFile('data/fog_nodes/key').as_list():
+                wallet = Wallet(key)
+                if wallet.address == address:
+                    if key not in LoadJsonFile('data/clients_manager/key').as_list():
+                        Wallet(key).save_private_key('data/clients_manager/key')
+                    break
 
-        return data
-
-    def on_change_state(self, data):
-        no_exist_node = True
-        for i in range(self.fogNodesWidget.rowCount()):
-            if self.fogNodesWidget.item(i, 0).text() == data['id_fog_node']:
-                self.fogNodesWidget.setItem(i, 1, QTableWidgetItem(data['state']))
-                self.fogNodesWidget.hide()
-                self.fogNodesWidget.show()
-                no_exist_node = False
-                break
-
-        if no_exist_node:  # Create new row
-            row = self.fogNodesWidget.rowCount()
-            self.fogNodesWidget.setRowCount(row + 1)
-            self.fogNodesWidget.setSortingEnabled(False)
-            self.fogNodesWidget.setItem(row, 0, QTableWidgetItem(data['id_fog_node']))
-            self.fogNodesWidget.setItem(row, 1, QTableWidgetItem(data['state']))
-            self.fogNodesWidget.setCurrentCell(row, 0)
-            self.fogNodesWidget.setSortingEnabled(True)
-        print(f'Node {data["id_fog_node"]} {data["state"]}')
-
-    @staticmethod
-    def amount_format(amount):
-        name_amount_format = ['bEx', 'KbEx', 'MbEx', 'GbEx', 'TbEx', 'PbEx', 'EbEx', 'ZbEx', 'YbEx']
-        cut_format = 0
-        while amount >= 1024:
-            amount /= 1024
-            cut_format += 1
-        return f'{round(amount, 2)} {name_amount_format[cut_format]}'
-
-    def on_change_balance(self, data):
-        for i in range(self.fogNodesWidget.rowCount()):
-            if self.fogNodesWidget.item(i, 0).text() == data['id_fog_node']:
-                if self._current_address_client_storage == data['id_fog_node']:
-                    self.labelAmountClient.setText(self.amount_format(data["amount"]))
-                    self.current_client_storage_full_amount = data["amount"]
-                self.fogNodesWidget.setItem(i, 2, QTableWidgetItem(self.amount_format(data['amount'])))
-                self.fogNodesWidget.setItem(i, 3, QTableWidgetItem(str(data['amount'])))
-                self.fogNodesWidget.item(i, 2).setTextAlignment(Qt.AlignRight)
-                self.fogNodesWidget.hide()
-                self.fogNodesWidget.show()
-                break
-
-    def start_pool(self):
-        try:
-            self.pool = Pool()
-            self.pool.start()
-        except Exception as e:
-            print(e)
-        self._address_pool = Wallet(LoadJsonFile('data/pool/key').as_list()[0]).address
-        self.setWindowTitle("DeCloud  —  " + self._address_pool)
-        self.sendByteExAction.setEnabled(True)
-        self.createPoolAction.setEnabled(False)
-
-    def current_change_client_storage(self, row):
-        self.createClientStorageAction.setEnabled(
-            self.fogNodesWidget.item(row, 0).text() not in self.client_storages.keys())
-
-    def change_client_storage_address(self):
-        self.set_current_address_client_storage(self.sender().text())
-        [addressAction.setCheckable(False) for addressAction in self.addresses_action]
-        self.sender().setCheckable(True)
-        self.sender().setChecked(True)
-        self.setWindowTitle("DeCloud  —  " + self._current_address_client_storage)
-        self.current_id_dir = None
-        self.show_current_dir()
-
-    def create_client_storage(self):
-        address = self.fogNodesWidget.item(self.fogNodesWidget.currentRow(), 0).text()
-        for key in LoadJsonFile('data/fog_nodes/key').as_list():
-            wallet = Wallet(key)
-            if wallet.address == address:
-                self.client_storages[address] = {'wallet': Wallet(key),
-                                                 'id_current_dir': None}
-                self.client_storages[address]['wallet'].save_private_key('data/clients_manager/key')
-                self.fogNodesWidget.item(self.fogNodesWidget.currentRow(), 0).setForeground(QColor('green'))
-                self.setWindowTitle("DeCloud  —  " + address)
-                self.set_current_address_client_storage(address)
-                self.current_id_dir = None
-                self.show_current_dir()
-                self.tab.setCurrentIndex(0)
-                self._createMenuBar()
-                return
+            tabClientStorages = QFrame()
+            clientStorageWidget = ClientStorageWidget(address)
+            clientStorageWidget.change_balance(int(self.fogNodesWidget.fogNodesTableWidget.item(
+                self.fogNodesWidget.fogNodesTableWidget.currentRow(), 3).text()))
+            tabClientStorages.setLayout(clientStorageWidget)
+            self.tab.insertTab(self.tab.count() - 1, tabClientStorages, address)
+            self.tab.setCurrentIndex(self.tab.count() - 2)
 
     def create_client_storage_for_pool(self):
         key = LoadJsonFile('data/pool/key').as_list()[0]
@@ -462,205 +126,6 @@ class AppClient(QMainWindow):
         self.current_id_dir = None
         self.show_current_dir()
         self.tab.setCurrentIndex(0)
+        self.sendDomainNameRegistrationAction.setEnabled(True)
         self._createMenuBar()
 
-    def create_node(self):
-        # Создаем новую node
-        self.mfn.add_fog_node()
-
-    def create_dir(self):
-        # Создание новой директории
-        if self._current_address_client_storage is None:
-            QMessageBox.critical(self, "Ошибка", "Нет клиента", QMessageBox.Ok)
-        else:
-            text, ok = QInputDialog.getText(self, 'Input Dialog',
-                                            'Enter name directory:')
-            if ok:
-                if text == '..':
-                    QMessageBox.critical(self, "Ошибка", "Не корректное имя файла", QMessageBox.Ok)
-                else:
-                    if 400 + self.current_client_storage_occupied_amount > self.current_client_storage_full_amount:
-                        QMessageBox.critical(self, "Ошибка", "Не хватает места", QMessageBox.Ok)
-                        return
-                    data = {'name': text}
-                    id_current_dir = self.client_storages[self._current_address_client_storage]['id_current_dir']
-                    if id_current_dir:
-                        data['id_current_dir'] = id_current_dir
-                    data = self.signed_data_request(data)
-                    response = requests.get(f'http://{DNS_NAME}:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/make_dir',
-                                            json=data).json()
-                    if 'error' in response:
-                        QMessageBox.critical(self, "Error", response['error'], QMessageBox.Ok)
-                    else:
-                        self.current_id_dir = id_current_dir
-                        self.show_current_dir()
-
-    def send_file(self):
-        # Загрузка нового файла
-        if self._current_address_client_storage is None:
-            QMessageBox.critical(self, "Ошибка", "Нет клиента", QMessageBox.Ok)
-        else:
-            path = QFileDialog.getOpenFileName(self, "Select a file...", None, filter="All files (*)")[0]
-            if path != "":
-                if os.path.getsize(path) + self.current_client_storage_occupied_amount > \
-                        self.current_client_storage_full_amount:
-                    QMessageBox.critical(self, "Ошибка", "Не хватает места", QMessageBox.Ok)
-                    return
-                file_name = path.split('/')[-1]
-                for i in range(self.clientStoragesExplorer.rowCount()):
-                    if self.clientStoragesExplorer.item(i, 1).text() == file_name and self.clientStoragesExplorer.item(
-                            i, 3).text() == 'File':
-                        QMessageBox.critical(self, "Ошибка", "Такое имя файла уже существует", QMessageBox.Ok)
-                        return
-
-                print(f'Загружаем файл {file_name}')
-                params = {'file_name': file_name}
-
-                id_current_dir = self.client_storages[self._current_address_client_storage]['id_current_dir']
-                if id_current_dir:
-                    params['id_current_dir'] = id_current_dir
-
-                params = self.signed_data_request(params)
-                response = requests.post(f'http://{DNS_NAME}:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/save_file',
-                                         params=params,
-                                         data=self.chunking(path)).json()
-                if 'error' in response:
-                    QMessageBox.critical(self, "Error", response['error'], QMessageBox.Ok)
-                else:
-                    self.current_id_dir = id_current_dir
-                    self.show_current_dir()
-
-    def open_object(self, item):
-        # Открытие объекта/переход в новую папку
-        # Обновляем изображение окна
-        id_item = self.clientStoragesExplorer.item(self.clientStoragesExplorer.currentRow(), 0).text()
-        type_item = self.clientStoragesExplorer.item(self.clientStoragesExplorer.currentRow(), 3).text()
-
-        if type_item == 'Directory':
-            self.client_storages[self._current_address_client_storage]['id_current_dir'] = id_item
-            self.current_id_dir = id_item
-            self.show_current_dir()
-        else:
-            self.show_current_file(id_item)
-
-    def show_current_dir(self):
-        # Переходим в директорию
-        data = {'address': self.get_current_client_wallet().address}
-
-        if self.current_id_dir not in {None, ''}:
-            # Передаем id объекта, если создаем новую директорию или открываем файл
-            data['id_object'] = self.current_id_dir
-        while True:
-            try:
-                response = requests.get(f'http://{DNS_NAME}:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/get_object',
-                                        params=data).json()
-                break
-            except:
-                time.sleep(0.1)
-
-        if sha3_256(bytes(json.dumps(response), 'utf-8')).digest() == self.last_response_hash:
-            return
-        self.last_response_hash = sha3_256(bytes(json.dumps(response), 'utf-8')).digest()
-
-        self.current_client_storage_occupied_amount = response['occupied']
-        self.labelOccupiedAmount.setText(self.amount_format(self.current_client_storage_occupied_amount))
-        self.clientStoragesExplorer.setRowCount(sum([(len(response[type])) for type in ['dirs', 'files']]))
-        row = 0
-        for type in ['dirs', 'files']:
-            for obj in sorted(response[type], key=lambda k: k['name']):  # Отображаем отсортированные директории и файлы
-                self.clientStoragesExplorer.setItem(row, 0, QTableWidgetItem(obj['id_object']))
-                self.clientStoragesExplorer.setItem(row, 1, QTableWidgetItem(obj['name']))
-                self.clientStoragesExplorer.setItem(row, 3, QTableWidgetItem({'dirs': 'Directory',
-                                                                              'files': 'File'}[type]))
-                if 'info' in obj.keys() and obj['info']:
-                    self.clientStoragesExplorer.item(row, 1).setForeground(QColor('green'))
-                    date = datetime.fromtimestamp(obj['info']['date']).strftime('%Y-%m-%d %H:%M:%S')
-                    self.clientStoragesExplorer.setItem(row, 2, QTableWidgetItem(date))
-                    self.clientStoragesExplorer.setItem(row, 4,
-                                                        QTableWidgetItem(self.amount_format(obj['info']['size'])))
-                elif obj['name'] == '..':
-                    self.clientStoragesExplorer.setItem(row, 2, QTableWidgetItem(''))
-                    self.clientStoragesExplorer.setItem(row, 4, QTableWidgetItem(''))
-                else:
-                    self.clientStoragesExplorer.item(row, 1).setForeground(QColor('red'))
-                    date = datetime.fromtimestamp(datetime.utcnow().timestamp()).strftime('%Y-%m-%d %H:%M:%S')
-                    self.clientStoragesExplorer.setItem(row, 2, QTableWidgetItem(date))
-                    if type == 'dirs':
-                        self.clientStoragesExplorer.setItem(row, 4, QTableWidgetItem(self.amount_format(0)))
-                    else:
-                        self.clientStoragesExplorer.setItem(row, 4, QTableWidgetItem(self.amount_format(0)))
-
-                row += 1
-        self.clientStoragesExplorer.hide()
-        self.clientStoragesExplorer.show()
-
-    def show_current_file(self, id_obj):
-        # Открываем файл
-        data = {'address': self.get_current_client_wallet().address}
-        if id_obj not in {None, ''}:
-            # Передаем id объекта, если создаем новую директорию или открываем файл
-            data['id_object'] = id_obj
-
-        response = requests.get(f'http://{DNS_NAME}:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/get_object',
-                                params=data)
-
-        # Сохраняем во временные файлы и открываем
-        file_name = os.path.join(os.environ['TEMP'],
-                                 self.clientStoragesExplorer.item(self.clientStoragesExplorer.currentRow(), 1).text())
-        with open(file_name, 'wb') as f:
-            [f.write(chunk) for chunk in response.iter_content(SIZE_REPLICA)]
-
-        os.startfile(file_name)
-
-
-class Send_ByteEx(QDialog):
-    def __init__(self, sender: str):
-        super().__init__()
-
-        from PyQt5.QtGui import QIntValidator
-        from PyQt5.QtWidgets import QDialog, QGridLayout, QDialogButtonBox
-        self.resize(500, 200)
-        layoutv = QVBoxLayout()
-
-        grid = QGridLayout()
-        grid.setSpacing(10)
-
-        textSender = QLabel('Sender: ')
-        self.lineEditSender = QLineEdit(sender)
-        grid.addWidget(textSender, 1, 0)
-        grid.addWidget(self.lineEditSender, 1, 1)
-
-        textOwner = QLabel('Owner: ')
-        self.lineEditOwner = QLineEdit()
-        grid.addWidget(textOwner, 2, 0)
-        grid.addWidget(self.lineEditOwner, 2, 1)
-
-        textAmount = QLabel('Amount ByteEx: ')
-        self.lineEditAmount = QLineEdit()
-        self.lineEditAmount.setValidator(QIntValidator(0, 100000, self))
-        grid.addWidget(textAmount, 3, 0)
-        grid.addWidget(self.lineEditAmount, 3, 1)
-
-        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        button_box.accepted.connect(self.accept)
-        button_box.rejected.connect(self.reject)
-
-        layoutv.addLayout(grid)
-        layoutv.addStretch(1)
-        layoutv.addWidget(button_box)
-
-        self.setLayout(layoutv)
-        self.setWindowTitle("Send ByteEx")
-
-    def execute(self):
-        if self.exec() == QDialog.Accepted:
-            response = requests.get(
-                f'http://{DNS_NAME}:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/get_free_balance/{self.lineEditSender.text()}')
-            if response.status_code == 200:
-                free_balance = response.json()
-                amount = int(self.lineEditAmount.text())
-                if amount <= free_balance:
-                    transaction = {'sender': self.lineEditSender.text(), 'owner': self.lineEditOwner.text(),
-                                   'count': amount}
-                    response = requests.post(f'http://{DNS_NAME}:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/new_transaction',
-                                            json=transaction)

@@ -1,46 +1,16 @@
 import sys
 from fog_nodes_manager import ManagerFogNodes
-from variables import POOL_PORT,POOL_FN_PORT,POOL_CM_PORT,PORT_DISPATCHER_CLIENTS_MANAGER, DNS_NAME, DNS_IP
+from register_domain_name import register_domain_name
+from variables import POOL_PORT,POOL_FN_PORT,POOL_CM_PORT,PORT_DISPATCHER_CLIENTS_MANAGER
 from PyQt5.QtWidgets import QApplication
 from command_parser import CommandParser
 from app_client import AppClient
 from clients_manager import DispatcherClientsManager
 from pool import Pool
-import ctypes
-import os
-
-
-def RegisterDomainName():
-    os_name = os.name
-    if os_name == 'nt':
-        path = os.environ['SYSTEMROOT'] + '\System32\drivers\etc\hosts'
-    elif os_name == 'posix':
-        path = '/etc/hosts'
-        run_admin = True
-
-        with open(path, 'r') as f:
-            while True:
-                line = f.readline()
-                if not line:
-                    break
-                if line[:-1] == DNS_IP + ' ' + DNS_NAME:
-                    run_admin = False
-
-        print(run_admin, ctypes.windll.shell32.IsUserAnAdmin())
-        if run_admin:
-            if os_name == 'nt' and not ctypes.windll.shell32.IsUserAnAdmin():
-                hinstance = ctypes.windll.shell32.ShellExecuteW(None, 'runas', sys.executable, ' '.join(sys.argv), None, 1)
-                exit(0)
-            elif os_name == 'posix' and os.getuid() != 0:
-                print('Please input SUDO')
-                exit(0)
-            else:
-                with open(path, 'a') as f:
-                    f.write('\n' + DNS_IP + ' ' + DNS_NAME + '\n')
 
 
 if __name__ == '__main__':
-    RegisterDomainName()
+    register_domain_name()
 
     if 'console' in sys.argv or '-c' in sys.argv:
         parser = CommandParser()

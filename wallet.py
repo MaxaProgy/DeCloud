@@ -33,7 +33,10 @@ class Wallet:
         return res
 
     @staticmethod
-    def check_valid_address(address):
+    def check_valid_address(address: str):
+        if len(address) != 40 or not all([char in '0123456789abcdefABCDEF' for char in address]):
+            return False
+
         # Проверяем правильность ввода address
         return address == Wallet.address_build_checksum(address)
 

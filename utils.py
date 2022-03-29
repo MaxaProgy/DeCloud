@@ -14,7 +14,15 @@ WARNING_VIEW = True
 TIME_TO_LIFE_FILE = 3600  # Время жизни файла в секундах
 
 _LETTERS = ascii_lowercase
+NAME_AMOUNT_FORMAT = ['bEx', 'KbEx', 'MbEx', 'GbEx', 'TbEx', 'PbEx', 'EbEx', 'ZbEx', 'YbEx']
 
+
+def amount_format(amount):
+    cut_format = 0
+    while amount >= 1024:
+        amount /= 1024
+        cut_format += 1
+    return f'{round(amount, 2)} {NAME_AMOUNT_FORMAT[cut_format]}'
 
 def get_path(path: str) -> str:
     file = ''
@@ -40,7 +48,9 @@ def exists_path(path: str) -> bool:
 
 
 def get_size_file(path: str) -> int:
-    return os.path.getsize(get_path(path))
+    if exists_path(path):
+        return os.path.getsize(get_path(path))
+    return 0
 
 
 def get_pools_address():

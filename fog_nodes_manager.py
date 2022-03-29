@@ -23,7 +23,7 @@ class WorkerProcess(Process):
 
         @self.client.method('get_balance')
         def get_balance(json, data):
-            return self.fog_nodes[json['address']].pool_client.request(json['address'], 'get_balance')
+            return self.fog_nodes[json['address']].pool_client.request(method='get_balance')
 
         self.client.start()
 
@@ -81,4 +81,4 @@ class ManagerFogNodes:
         for worker in self.process_worker:
             if address in worker['process_clients']:
                 json['address'] = address
-                return self._server_fog_nodes.request(worker['process_name'], method=method, json=json)
+                return self._server_fog_nodes.request(id_worker=worker['process_name'], method=method, json=json)

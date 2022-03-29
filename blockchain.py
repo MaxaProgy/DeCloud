@@ -1,14 +1,18 @@
 import random
 import requests
-from _pysha3 import keccak_256 as sha3_256
 import datetime
 import os
 import time
+
+from _pysha3 import keccak_256 as sha3_256
 from threading import Thread
+from client_state import ClientState
+from dispatcher_save_replicas import DispatcherSaveReplicas
+from dns import DNS
 from fog_node import SIZE_REPLICA, COUNT_REPLICAS_IN_FOG_NODE
+from fog_nodes_state import FogNodesState
 from utils import exists_path, get_path, get_size_file, print_error, \
-    print_info, LoadJsonFile, SaveJsonFile, DispatcherSaveFiles, get_pools_host, get_hash, sorted_dict, \
-    is_ttl_file
+    print_info, LoadJsonFile, SaveJsonFile, DispatcherSaveFiles, get_pools_host, get_hash, sorted_dict
 from variables import POOL_ROOT_IP, POOL_PORT
 from wallet import Wallet
 
@@ -16,129 +20,6 @@ AMOUNT_PAY_FOG_NODE = 1024 ** 2
 AMOUNT_PAY_POOL = int(AMOUNT_PAY_FOG_NODE * 0.1)
 COUNT_BLOCK_IN_FILE_BLOCKS = 10_000
 LEN_CACHE_BLOCKS = 1000
-
-
-class FogNodesState:
-    def __init__(self):
-        self._fog_nodes = {}
-
-    def add(self, id_fog_node, data):
-        self._fog_nodes[id_fog_node] = data
-
-    def delete(self, id_fog_node):
-        if id_fog_node in self._fog_nodes:
-            self._fog_nodes.pop(id_fog_node)
-
-    def add_hash_replica(self, id_fog_node, hash):
-        self._fog_nodes[id_fog_node]['hash_replicas'].append(hash)
-
-    def del_hash_replica(self, id_fog_node, hash):
-        index = self._fog_nodes[id_fog_node]['hash_replicas'].index(hash)
-        if index != -1:
-            self._fog_nodes[id_fog_node]['hash_replicas'].pop(index)
-
-    def find_hash_replica(self, hash):
-        return [key for key, item in self._fog_nodes if hash in item['hash_replicas']]
-
-    def get_size(self, id_fog_node):
-        return self._fog_nodes[id_fog_node]['size_fog_node']
-
-    def get_of_free_size(self, size):
-        return [key for key, item in self._fog_nodes.items()
-                if item['size_fog_node'] + size <= SIZE_REPLICA * COUNT_REPLICAS_IN_FOG_NODE]
-
-    def exist_replica(self, id_fog_node, hash):
-        return hash in self._fog_nodes[id_fog_node]['hash_replicas']
-
-    @property
-    def is_empty(self):
-        return self._fog_nodes == {}
-
-
-class DispatcherSaveReplicas(Thread):
-    def __init__(self, fog_nodes_state, server_fn):
-        super().__init__()
-        self._fog_nodes_state = fog_nodes_state
-        self._server_fn = server_fn
-
-    def run(self):
-        path = get_path('data/pool/waiting_replicas/')
-        while True:
-            for directory_path, directory_names, file_names in os.walk(path):
-                for file_name in file_names:
-                    size = get_size_file(path + file_name)
-                    fog_nodes_of_free_size = self._fog_nodes_state.get_of_free_size(size)
-                    with open(path + file_name, 'rb') as f:
-                        data = f.read()
-
-                    is_save_in_replicas = False
-                    for fog_node in fog_nodes_of_free_size:
-                        if not self._fog_nodes_state.exist_replica(fog_node, file_name):
-                            self._server_fn.request(id_worker=fog_node, method='save_replica', data=data)
-                            self._fog_nodes_state.add_hash_replica(fog_node, file_name)
-                        is_save_in_replicas = True
-
-                    if not self._fog_nodes_state.is_empty and not fog_nodes_of_free_size:
-                        # Сделать находжение коэффициента репликации.
-                        # Запись в fog nodes, если нет свободного места в подключенных к пулу нодах
-                        pass
-
-                    if is_save_in_replicas and not is_ttl_file(f'data/pool/waiting_replicas/{file_name}'):
-                        os.remove(path + file_name)
-            time.sleep(0.1)
-            pass
-
-
-class ClientState:
-    # Класс состояния клиента, его файлов
-    def __init__(self, parent, address):
-        self._address = address
-        self._server_fn = parent._server_fn
-        self._state_client = {'all_balance': 0, 'occupied_balance': 0, 'objects': {}}
-        self._path = f'data/pool/state/{"/".join([self._address[i:i + 2] for i in range(0, len(self._address), 2)])}'
-        self._load_state()
-
-    def _load_state(self):
-        # Загрузка предыдущего состояния из файла
-        if not exists_path(self._path):
-            return
-        self._state_client = LoadJsonFile(self._path).as_dict()
-
-    def _save_state(self):
-        # Загрузка текущего состояния в файл
-        SaveJsonFile(path=self._path, data=self._state_client)
-
-    def add_object(self, id_object, size):
-        # Добавление нового объекта клиента
-        self._state_client['objects'][id_object] = {'date': datetime.datetime.utcnow().timestamp(),
-                                                    'size': size}
-        self._save_state()
-
-    def info_object(self, id_object):
-        # Возвращение информации объекта (файл, директория), его время создания и размер
-        if id_object in self._state_client['objects'].keys():
-            return self._state_client['objects'][id_object]
-        return {}
-
-    @property
-    def all_balance(self):
-        return self._state_client['all_balance']
-
-    @all_balance.setter
-    def all_balance(self, amount):
-        self._state_client['all_balance'] = amount
-        self._save_state()
-        if self._address in self._server_fn.get_workers():
-            self._server_fn.request(self._address, 'update_balance', {'amount': self._state_client['all_balance']})
-
-    @property
-    def occupied_balance(self):
-        return self._state_client['occupied_balance']
-
-    @occupied_balance.setter
-    def occupied_balance(self, amount):
-        self._state_client['occupied_balance'] = amount
-        self._save_state()
 
 
 class Blockchain(Thread):
@@ -162,10 +43,10 @@ class Blockchain(Thread):
         self._now_active_pools = {}  # Динамическая загрузка активных пулов со всех активных пулов, изменяемый словарь
         self._hash_last_block = "0"
         self._ready = False  # Готовность блокчейна к работе
-        # Загружаем транзакции, которые ожидают обработки
-        self._transactions = LoadJsonFile('data/pool/waiting_transaction').as_dict()
+        self._transactions = LoadJsonFile('data/pool/waiting_transaction').as_dict() # Загружаем транзакции, которые ожидают обработки
         self._fog_nodes_state = FogNodesState()
         self._dsr = DispatcherSaveReplicas(self._fog_nodes_state, self._server_fn)
+        self._dns = DNS(self._dispatcher_save)
 
     def add_fog_node(self, id_fog_node, data):
         self._fog_nodes_state.add(id_fog_node, data)
@@ -178,24 +59,38 @@ class Blockchain(Thread):
         if bool(owner) == bool(data):
             # Если нет owner, значит размещение объекта в сети, значит data должана быть
             # Если owner есть, значит перечисление между пользователями, значит data не должна быть,
-            return False
+            return 100, 'Entered parameters "owner" or "data" in transaction is not valid'
+        if not Wallet.check_valid_address(sender):
+            name = self._dns.find_address(sender)
+            if name:
+                sender = name
+            else:
+                return 100, f'Parameter "sender" - {sender} is not valid'
+        if owner and not Wallet.check_valid_address(owner):
+            name = self._dns.find_address(owner)
+            if name:
+                owner = name
+            else:
+                return 100, f'Parameter "owner" - {owner} is not valid'
+
         if data:
             if data and is_cm:  # При наличии контрольной реплики со всеми хешами файла
+                if not exists_path(f'data/pool/waiting_replicas/{data}'):  # Если нет контрольной реплики, то не создаем транзакцию
+                    return 100, 'Error no main replica'
                 path_root = get_path(f'data/pool/waiting_replicas/{data}')
-                if not os.path.exists(path_root):  # Если нет контрольной реплики, то не создаем транзакцию
-                    print_error('Error Not main replica', data)
-                    return False
                 count = os.path.getsize(path_root)
 
                 path = None
                 data_file = LoadJsonFile(f'data/pool/waiting_replicas/{data}').as_list()
-                if len(data_file) == 3:
-                    for hash in data_file[2]:
+                if data_file[0] == 'file':
+                    for hash in data_file[3]:
+                        if not exists_path(f'data/pool/waiting_replicas/{hash}'):
+                            return 100, f'Not replica - {hash}'
                         path = get_path(f'data/pool/waiting_replicas/{hash}')
-                        if not os.path.exists(path):
-                            print_error('Not replica', hash)
-                            return False
                         count += os.path.getsize(path)
+                elif data_file[0] == 'ns':
+                    if Wallet.check_valid_address(data_file[1]):
+                        return 100, f'Error ns name - {data_file[1]} is not valid'
 
         transaction = {'sender': sender, 'owner': owner, 'count': count, 'data': data, 'date': date}
         transaction = dict(sorted(transaction.items(), key=lambda x: x[0]))
@@ -212,7 +107,7 @@ class Blockchain(Thread):
                     if data:
                         with open(path_root, 'rb') as f:
                             requests.post(f'http://{item["params"][0]}:{item["params"][1]}/send_replica', data=f.read())
-                        if len(data_file) == 3 and path:
+                        if data_file[0] == 'file' and path:
                             with open(path, 'rb') as f:
                                 requests.post(f'http://{item["params"][0]}:{item["params"][1]}/send_replica', data=f.read())
                     requests.post(f'http://{item["params"][0]}:{item["params"][1]}/new_transaction', json=transaction)
@@ -220,7 +115,7 @@ class Blockchain(Thread):
                     pass
 
         SaveJsonFile(path='data/pool/waiting_transaction', data=self._transactions)
-        return True
+        return 0, "success"
 
     def is_ready(self):
         return self._ready
@@ -342,29 +237,33 @@ class Blockchain(Thread):
         transactions = self._transactions.copy()
         self._transactions = {}
         self._dispatcher_save.add(path='data/pool/waiting_transaction', data=self._transactions)
-
-        for key, item in transactions.items():
-            sender = item['sender']
+        for key in list(transactions):
+            sender = transactions[key]['sender']
             client = ClientState(self, sender)
-            if 'owner' in item:
-                if client.all_balance - client.occupied_balance - item['count'] < 0:
-                    print_error("Transaction ERROR. Не хватает бабок", item)
-                    transactions.pop(key)
-            else:
-                path = get_path(f'data/pool/waiting_replicas/{item["data"]}')
+            if transactions[key]["data"]:
+                path = get_path(f'data/pool/waiting_replicas/{transactions[key]["data"]}')
+                data_file = LoadJsonFile(f'data/pool/waiting_replicas/{transactions[key]["data"]}').as_list()
 
+            if transactions[key]['owner'] or data_file[0] == 'ns':
+                if client.all_balance - client.occupied_balance - transactions[key]['count'] < 0:
+                    print_error("Transaction ERROR. Не хватает бабок", transactions[key])
+                    transactions.pop(key)
+                    continue
+            else:
                 size = os.path.getsize(path)
-                data_file = LoadJsonFile(f'data/pool/waiting_replicas/{item["data"]}').as_list()
-                if len(data_file) == 3 and len(data_file[2]) != 0:
-                    size = size + (len(data_file[2]) - 1) * SIZE_REPLICA + \
-                           get_size_file(f'data/pool/waiting_replicas/{data_file[2][-1]}')
+                if data_file[0] == 'file' and len(data_file[3]) != 0:
+                    size = size + (len(data_file[3]) - 1) * SIZE_REPLICA + \
+                           get_size_file(f'data/pool/waiting_replicas/{data_file[3][-1]}')
                 transactions[key]['count'] = size
 
                 if client.all_balance < client.occupied_balance + size:
-                    print_error("Transaction ERROR", item)
+                    print_error("Transaction ERROR", transactions[key])
                     transactions.pop(key)
                 else:
-                    print_info("Transaction OK", item)
+                    print_info("Transaction OK", transactions[key])
+
+            if transactions[key]["data"] and data_file[0] == 'ns':
+                self._dns.add_ns(data_file[1], data_file[2])
 
         count_fog_nodes = sum([item['fog_nodes'] for key, item in self.all_active_pools().items()])
         amount = int((count_fog_nodes * COUNT_REPLICAS_IN_FOG_NODE * SIZE_REPLICA) / (60 * 24 * 365))

@@ -8,23 +8,18 @@ from flask import Flask, jsonify, request
 from blockchain import Blockchain
 from dctp import ServerDCTP, send_status_code
 from fog_nodes_manager import ManagerFogNodes
-from utils import exists_path, get_path, append_pool_host, LoadJsonFile, get_pools_host
+from utils import exists_path, get_path, append_pool_host, LoadJsonFile, get_pools_host, SaveJsonFile
 from variables import POOL_PORT, POOL_CM_PORT, POOL_FN_PORT
 from wallet import Wallet
 import requests
+import json as _json
 from random import choice
 
 
 class Pool(Process):
-    def __init__(self, port_pool=POOL_PORT, port_cm=POOL_CM_PORT, port_fn=POOL_FN_PORT):
+    def __init__(self, private_key, port_pool=POOL_PORT, port_cm=POOL_CM_PORT, port_fn=POOL_FN_PORT):
         super().__init__()
-        if not exists_path('data/pool/key'):
-            self._wallet = Wallet()
-            self._wallet.save_private_key('data/pool/key')
-            print(f'Create POOL {self._wallet.address}')
-        else:
-            self._wallet = Wallet(LoadJsonFile('data/pool/key').as_list()[0])
-
+        self._wallet = Wallet(private_key)
         self._port_cm = port_cm
         self._port_fn = port_fn
         self._port_pool = port_pool
@@ -49,8 +44,8 @@ class Pool(Process):
                 pass
 
     def run(self):
-        self.mfn = ManagerFogNodes(cpu_count=1)
-        self.mfn.load_fog_nodes('data/pool/key')
+        if not Wallet.check_valid_address(self._wallet.address):
+            raise Exception(f'Pool address {self._wallet.address} is not valid')
 
         server_CM = ServerDCTP(self._port_cm)
 
@@ -59,31 +54,57 @@ class Pool(Process):
             with open(get_path(f'data/pool/waiting_replicas/{sha3_256(data).hexdigest()}'), 'wb') as f:
                 f.write(data)
 
+        @server_CM.method('commit_replica')
+        def commit_replica(json, data):
+            if not all([key in json for key in ['id_client', 'data']]):
+                return send_status_code(100, 'Required parameters are not specified: id_client, data')
+
+            code, text = self._blockchain.new_transaction(sender=json['id_client'], data=json['data'],
+                                                          date=datetime.datetime.utcnow().timestamp(), is_cm=True)
+            return send_status_code(code, text)
+
         @server_CM.method('new_transaction')
         def new_transaction(json, data):
-            if 'owner' not in json:
-                json['owner'] = None
-            if 'data' not in json:
-                json['data'] = None
-            if 'count' not in json:
-                json['count'] = 0
-            if bool(json['data']) == bool(json['owner']) or \
-                    type(json['count']) != int or \
-                    (json['owner'] and json['count'] == 0) or \
-                    'sender' not in json:
-                return send_status_code(100)
-            if not self._blockchain.new_transaction(sender=json['sender'], owner=json['owner'], data=json['data'],
-                                                    count=json['count'], date=datetime.datetime.utcnow().timestamp(),
-                                                    is_cm=True):
-                return send_status_code(100)
+            if not all([key in json for key in ['sender', 'owner', 'count']]):
+                return send_status_code(100, 'Required parameters are not specified: sender, owner, count')
+
+            json['sender'] = json['sender'].lstrip().rstrip()
+            json['owner'] = json['owner'].lstrip().rstrip()
+            if json['sender'] == json['owner']:
+                return send_status_code(100, 'Are you stupid? why send byteEx yourself.')
+
+            if type(json['count']) == int:
+                if json['count'] <= 0:
+                    return send_status_code(100, 'Required parameter "count" must be greater than zero')
+            else:
+                return send_status_code(100, 'Required parameter "count" must be a number')
+
+            code, text = self._blockchain.new_transaction(sender=json['sender'], owner=json['owner'],
+                                                          count=json['count'],
+                                                          date=datetime.datetime.utcnow().timestamp(), is_cm=True)
+            return send_status_code(code, text)
 
         @server_CM.method('get_occupied')
         def get_occupied(json, data):
-            return {'occupied': self._blockchain.get_occupied(json['address'])}
+            return {'occupied': self._blockchain.get_occupied(json['id_client'])}
 
         @server_CM.method('get_info_object')
         def get_info_object(json, data):
-            return {'info': self._blockchain.get_info_object(json['address'], json['id_object'])}
+            return {'info': self._blockchain.get_info_object(json['id_client'], json['id_object'])}
+
+        @server_CM.method('registration_domain_name')
+        def registration_domain_name(json, data):
+            if not all([key in json for key in ['address', 'name']]):
+                return send_status_code(100, 'Required parameters are not specified: address, name')
+            if type(json['name']) != str or not json['name'].strip():
+                return send_status_code(100, 'Parameter "name" is not valid')
+
+            replica = ['ns', json['name'], json['address']]
+            hash_replica = sha3_256(bytes(_json.dumps(replica), 'utf-8')).hexdigest()
+            SaveJsonFile(f'data/pool/waiting_replicas/{hash_replica}', replica)
+            code, text = self._blockchain.new_transaction(sender=json['address'], data=hash_replica,
+                                                          date=datetime.datetime.utcnow().timestamp(), is_cm=True)
+            return send_status_code(code, text)
 
         server_CM.start()
 
@@ -91,23 +112,23 @@ class Pool(Process):
 
         @server_FN.method('connect_valid_client')
         def connect_valid_client(json):
-            return Wallet.check_valid_address(json['address'])
+            return Wallet.check_valid_address(json['id_worker'])
 
         @server_FN.method('on_connected')
         def on_connected(json):
-            response = server_FN.request(id_worker=json['address'], method='get_hash_replicas')
+            response = server_FN.request(id_worker=json['id_worker'], method='get_hash_replicas')
             if all([key in response for key in ['hash_replicas', 'size_fog_node']]):
-                self._blockchain.add_fog_node(id_fog_node=json['address'],
+                self._blockchain.add_fog_node(id_fog_node=json['id_worker'],
                                               data={'hash_replicas': response['hash_replicas'],
                                                     'size_fog_node': response['size_fog_node']})
 
         @server_FN.method('on_disconnected')
         def on_disconnected(json):
-            self._blockchain.del_fog_node(json['address'])
+            self._blockchain.del_fog_node(json['id_worker'])
 
         @server_FN.method('get_balance')
         def get_balance(json, data):
-            return {'amount': self._blockchain.get_balance(json['address'])}
+            return {'amount': self._blockchain.get_balance(json['id_client'])}
 
         server_FN.start()
 
@@ -216,7 +237,11 @@ class Pool(Process):
 
         @app.route('/get_free_balance/<address>', methods=['GET'])
         def get_occupied(address):
-            return jsonify(self._blockchain.get_balance(address) - self._blockchain.get_occupied(address))
+            if Wallet.check_valid_address(address):
+                return jsonify({'status': 0, 'status_text': 'success',
+                                'amount_free_balance': self._blockchain.get_balance(address) - self._blockchain.get_occupied(
+                                    address)})
+            return jsonify(send_status_code(100, f'Parameter "address" - {address} is not valid'))
 
         app.run(host='0.0.0.0', port=self._port_pool)
 

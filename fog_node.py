@@ -6,7 +6,6 @@ import time
 from threading import Thread
 from dctp import ClientDCTP
 from utils import get_pools_host, get_path, exists_path, get_size_file, SaveJsonFile, print_error
-from variables import POOL_ROOT_IP, POOL_ROOT_PORT, POOL_FN_PORT, POOL_CM_PORT
 from wallet import Wallet
 
 SIZE_REPLICA = 1024 ** 2
@@ -150,8 +149,6 @@ class FogNode(BaseFogNode, Thread):
     def _get_connect_address_pool(self):
         while True:
             pools = get_pools_host('data/fog_nodes/pools_host')
-            if not pools:
-                pools[''] = (POOL_ROOT_IP, POOL_ROOT_PORT, POOL_CM_PORT, POOL_FN_PORT)
             active_pools = {}
             for key, item in list(pools.items()):
                 try:
@@ -192,7 +189,7 @@ class FogNode(BaseFogNode, Thread):
 
             @pool_client.method('update_balance')
             def update_balance(json, data):
-                self._process_client.request(self._id_fog_node, 'update_balance_fog_node',
+                self._process_client.request(id_client=self._id_fog_node, method='update_balance_fog_node',
                                              json={'amount': json['amount'], 'id_fog_node': self._id_fog_node})
 
             @pool_client.method('get_hash_replicas')
@@ -201,8 +198,7 @@ class FogNode(BaseFogNode, Thread):
 
             @pool_client.method('save_replica')
             def save_replica(json, data):
-                hex_hash = self._save_replica(data)
-                #print(f'Save replica {hex_hash} in fog_node {self.id_fog_node}')
+                self._save_replica(data)
 
             pool_client.start()
 
@@ -211,17 +207,17 @@ class FogNode(BaseFogNode, Thread):
             self._pool_client = pool_client
 
     def run(self):
-        self._process_client.request(self._id_fog_node, 'current_state_fog_node',
+        self._process_client.request(id_client=self._id_fog_node, method='current_state_fog_node',
                                      json={'state': 'connecting', 'id_fog_node': self._id_fog_node})
         self._connect_pool()
-        self._process_client.request(self._id_fog_node, 'current_state_fog_node',
+        self._process_client.request(id_client=self._id_fog_node, method='current_state_fog_node',
                                      json={'state': 'preparing', 'id_fog_node': self._id_fog_node})
         self._preparing_replicas()
 
         if self._pool_client.is_alive():
-            self._process_client.request(self._id_fog_node, 'update_balance_fog_node',
-                                         json=self._pool_client.request(self._id_fog_node, 'get_balance'))
-        self._process_client.request(self._id_fog_node, 'current_state_fog_node',
+            self._process_client.request(id_client=self._id_fog_node, method='update_balance_fog_node',
+                                         json=self._pool_client.request('get_balance'))
+        self._process_client.request(id_client=self._id_fog_node, method='current_state_fog_node',
                                      json={'state': 'work', 'id_fog_node': self._id_fog_node})
         time.sleep(30)
         while True:
