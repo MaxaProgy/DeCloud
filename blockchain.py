@@ -60,16 +60,15 @@ class Blockchain(Thread):
             # Если нет owner, значит размещение объекта в сети, значит data должана быть
             # Если owner есть, значит перечисление между пользователями, значит data не должна быть,
             return 100, 'Entered parameters "owner" or "data" in transaction is not valid'
-        if not Wallet.check_valid_address(sender):
-            name = self._dns.find_address(sender)
-            if name:
-                sender = name
-            else:
-                return 100, f'Parameter "sender" - {sender} is not valid'
-        if owner and not Wallet.check_valid_address(owner):
-            name = self._dns.find_address(owner)
-            if name:
-                owner = name
+        address_normal = self._dns.find_address(sender)
+        if address_normal:
+            sender = address_normal
+        else:
+            return 100, f'Parameter "sender" - {sender} is not valid'
+        if owner:
+            address_normal = self._dns.find_address(owner)
+            if address_normal:
+                owner = address_normal
             else:
                 return 100, f'Parameter "owner" - {owner} is not valid'
 
@@ -262,9 +261,6 @@ class Blockchain(Thread):
                 else:
                     print_info("Transaction OK", transactions[key])
 
-            if transactions[key]["data"] and data_file[0] == 'ns':
-                self._dns.add_ns(data_file[1], data_file[2])
-
         count_fog_nodes = sum([item['fog_nodes'] for key, item in self.all_active_pools().items()])
         amount = int((count_fog_nodes * COUNT_REPLICAS_IN_FOG_NODE * SIZE_REPLICA) / (60 * 24 * 365))
         block = {'number': self._now_block_number,
@@ -282,7 +278,9 @@ class Blockchain(Thread):
 
     def run(self):
         nearest_address_pool = None
+
         self.register_pool()
+
         self._all_active_pools = self._get_all_active_pools()
 
         # Загружаем и синхранизируем блокчейн
@@ -394,6 +392,27 @@ class Blockchain(Thread):
         for transaction in block['transactions']:
             sort_transaction = sorted_dict(transaction)
             hash = get_hash(sort_transaction)
+
+            if transaction['data']:
+                # Получаем root main replica транзакции, если ее нет в waiting_replicas, то догружаем с других пулов
+                while True:
+                    main_replica = LoadJsonFile(f'data/pool/waiting_replicas/{transaction["data"]}').as_list()
+                    if main_replica:
+                        break
+                    active_pools = self.all_active_pools()
+                    active_pools.pop(self._wallet_pool.address)
+                    ip, port, _, _ = active_pools[random.choice(list(active_pools))]["params"]
+                    try:
+                        response = requests.get(f'http://{ip}:{port}/load_replica/{transaction["data"]}')
+                        if response.status_code == 200:
+                            with open(get_path(f'data/pool/waiting_replicas/{transaction["data"]}'), 'wb') as f:
+                                for chunk in response.iter_content(1024):
+                                    f.write(chunk)
+                    except:
+                        pass
+                if transaction["data"] and main_replica[0] == 'ns':
+                    self._dns.add_ns(main_replica[1], main_replica[2])
+
             if hash in self._transactions:
                 self._transactions.pop(hash)
             if transaction['data']:
@@ -404,7 +423,6 @@ class Blockchain(Thread):
                 ClientState(self, transaction["sender"]).all_balance -= transaction['count']
             if transaction['owner']:
                 ClientState(self, transaction["owner"]).all_balance += transaction['count']
-
 
         self._dispatcher_save.commit()
         return hash_last_block

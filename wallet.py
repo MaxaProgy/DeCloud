@@ -57,8 +57,6 @@ class Wallet:
         pub = ('0' * (128 - len(hex(pub)[2:])) + hex(pub)[2:])
         return pub == public_key
 
-
-
     def _pub_to_address(self, public_key):
         return self.address_build_checksum(sha3_256(bytes(public_key, 'utf-8')).hexdigest()[-40:])
 

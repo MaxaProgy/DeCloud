@@ -1,4 +1,5 @@
-from utils import LoadJsonFile, SaveJsonFile
+from utils import LoadJsonFile
+from wallet import Wallet
 
 
 class DNS:
@@ -13,5 +14,10 @@ class DNS:
         print('Add NS record', name, address)
 
     def find_address(self, name):
-        if name in self._ns_table:
+        if Wallet.check_valid_address(name):
+            return name
+        elif name in self._ns_table:
             return self._ns_table[name]
+
+    def get_all_ns(self, address):
+        return {address: [key for key, item in self._ns_table.items() if item == address]}

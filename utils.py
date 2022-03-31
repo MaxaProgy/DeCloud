@@ -42,7 +42,6 @@ def get_path(path: str) -> str:
                 f.write('')
     return path
 
-
 def exists_path(path: str) -> bool:
     return os.path.exists(os.path.join(os.path.abspath(os.curdir), *path.split('/')))
 

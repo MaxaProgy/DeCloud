@@ -4,7 +4,7 @@ from argparse import ArgumentParser
 from threading import Thread
 from _pysha3 import keccak_256 as sha3_256
 from multiprocessing import Process
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, abort, Response
 from blockchain import Blockchain
 from dctp import ServerDCTP, send_status_code
 from fog_nodes_manager import ManagerFogNodes
@@ -20,6 +20,7 @@ class Pool(Process):
     def __init__(self, private_key, port_pool=POOL_PORT, port_cm=POOL_CM_PORT, port_fn=POOL_FN_PORT):
         super().__init__()
         self._wallet = Wallet(private_key)
+        SaveJsonFile('data/pool/key', private_key)
         self._port_cm = port_cm
         self._port_fn = port_fn
         self._port_pool = port_pool
@@ -92,6 +93,10 @@ class Pool(Process):
         def get_info_object(json, data):
             return {'info': self._blockchain.get_info_object(json['id_client'], json['id_object'])}
 
+        @server_CM.method('get_all_ns')
+        def get_all_ns(json, data):
+            return self._blockchain._dns.get_all_ns(json['id_client'])
+
         @server_CM.method('registration_domain_name')
         def registration_domain_name(json, data):
             if not all([key in json for key in ['address', 'name']]):
@@ -105,6 +110,10 @@ class Pool(Process):
             code, text = self._blockchain.new_transaction(sender=json['address'], data=hash_replica,
                                                           date=datetime.datetime.utcnow().timestamp(), is_cm=True)
             return send_status_code(code, text)
+
+        @server_CM.method('check_valid_address')
+        def check_valid_address(json, data):
+            return {'address_normal': self._blockchain._dns.find_address(json['id_client'])}
 
         server_CM.start()
 
@@ -231,16 +240,25 @@ class Pool(Process):
                 f.write(data)
             return jsonify()
 
+        @app.route('/load_replica/<string:hash_replica>', methods=['GET'])
+        def load_replica(hash_replica):
+            if exists_path(f'data/pool/waiting_replicas/{hash_replica}'):
+                with open(get_path(f'data/pool/waiting_replicas/{hash_replica}'), 'rb') as f:
+                    return Response(f.read())
+            abort(404)
+
         @app.route('/get_balance/<address>', methods=['GET'])
         def get_balance(address):
             return jsonify(self._blockchain.get_balance(address))
 
         @app.route('/get_free_balance/<address>', methods=['GET'])
         def get_occupied(address):
-            if Wallet.check_valid_address(address):
+            address_normal = self._blockchain._dns.find_address(address)
+            if address_normal:
                 return jsonify({'status': 0, 'status_text': 'success',
-                                'amount_free_balance': self._blockchain.get_balance(address) - self._blockchain.get_occupied(
-                                    address)})
+                                'amount_free_balance': self._blockchain.get_balance(
+                                    address_normal) - self._blockchain.get_occupied(
+                                    address_normal)})
             return jsonify(send_status_code(100, f'Parameter "address" - {address} is not valid'))
 
         app.run(host='0.0.0.0', port=self._port_pool)
@@ -255,5 +273,12 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    pool = Pool(port_pool=args.port_pool, port_cm=args.port_cm, port_fn=args.port_fn)
+    mfn = ManagerFogNodes(cpu_count=1)
+    if not exists_path('data/pool/key'):
+        mfn.add_fog_node()
+        private_key = LoadJsonFile('data/fog_nodes/key').as_list()[-1]
+        SaveJsonFile('data/pool/key', private_key)
+    else:
+        private_key = LoadJsonFile('data/pool/key').as_string()
+    pool = Pool(private_key=private_key, port_pool=args.port_pool, port_cm=args.port_cm, port_fn=args.port_fn)
     pool.start()

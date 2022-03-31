@@ -1,6 +1,10 @@
+import time
+
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QMainWindow, QDesktopWidget, QTabWidget, QFrame, QMenu, QAction, QTabBar, QToolButton, \
-    QLabel
+    QLabel, QTableWidgetItem
+
+from variables import POOL_BACKGROUND_COLOR
 from widgets import FogNodesWidget, PoolWidget, ClientStorageWidget, SearchClientStorage
 from utils import exists_path, LoadJsonFile, SaveJsonFile
 from wallet import Wallet
@@ -9,31 +13,33 @@ from wallet import Wallet
 class AppClient(QMainWindow):
     def __init__(self):
         super().__init__()
-        self._address_pool = ''
-        #self.load_params()
-        self.initUI()
+        self._address_pool = LoadJsonFile('data/pool/key').as_string()
 
+        self.initUI()
 
     def initUI(self):
         self.geometry = QDesktopWidget().availableGeometry()
         self.setGeometry(1000, 1000, 1000, 800)
         self.move(500, 100)
-
-        self.poolWidget = PoolWidget()
-
-        tabFogNodes = QFrame()
+        print(111111111111)
         self.fogNodesWidget = FogNodesWidget()
-        self.fogNodesWidget.createPool.connect(self.start_pool)
-        self.fogNodesWidget.changeBalance.connect(self.change_balance)
-        self.fogNodesWidget.createClientStorage.connect(self.create_and_open_client_storage)
-        tabFogNodes.setLayout(self.fogNodesWidget)
-
+        print(55555555555555)
+        self.poolWidget = PoolWidget()
         self.tab = QTabWidget()
         self.tab.setTabsClosable(True)
+        self.tab.setMovable(True)
         self.tab.tabCloseRequested.connect(self.closeTab)
 
-        self.tab.addTab(tabFogNodes, "Fog Nodes")
-
+        if exists_path('data/clients_manager/state_app'):
+            self.load_state_app()
+        else:
+            tabFogNodes = QFrame()
+            self.fogNodesWidget.createPool.connect(self.start_pool)
+            self.fogNodesWidget.changeBalance.connect(self.change_balance)
+            self.fogNodesWidget.createClientStorage.connect(self.create_and_open_client_storage)
+            tabFogNodes.setLayout(self.fogNodesWidget)
+            self.tab.addTab(tabFogNodes, "Fog Nodes")
+        print(999999999999999)
         self.tab.addTab(QLabel(""), '')
         self.addTabButton = QToolButton()
         self.addTabButton.setText('+')
@@ -47,12 +53,11 @@ class AppClient(QMainWindow):
     def new_window(self):
         tabSearch = QFrame()
         search = SearchClientStorage()
+        search.change_search_state.connect(self.save_state_app)
         tabSearch.setLayout(search)
 
         self.tab.insertTab(self.tab.count() - 1, tabSearch, 'New tab')
         self.tab.setCurrentIndex(self.tab.count() - 2)
-
-
 
     def change_balance(self, address, amount):
         if address == self._address_pool:
@@ -78,16 +83,55 @@ class AppClient(QMainWindow):
             tabPool.setLayout(self.poolWidget)
             self.tab.insertTab(self.tab.count() - 1, tabPool, "Pool")
             self.tab.setCurrentIndex(self.tab.count() - 2)
+            self.save_state_app()
 
     def closeEvent(self, event):
         self.showMinimized()
         event.ignore()
 
-    def save_params(self):
-        pass
+    def save_state_app(self):
+        new_data_state = []
+        for i in range(self.tab.count()):
+            name_tab = self.tab.tabText(i)
+            if name_tab == 'New tab':
+                new_data_state.append({'New tab': self.tab.findChild(SearchClientStorage).search.text()})
+            else:
+                new_data_state.append(name_tab)
+        SaveJsonFile('data/clients_manager/state_app', {'list_tab': new_data_state})
 
-    def load_params(self):
-        pass
+    def load_state_app(self):
+        last_state = LoadJsonFile('data/clients_manager/state_app').as_dict()
+        addresses_client = [Wallet(key).address for key in LoadJsonFile('data/clients_manager/key').as_list()]
+        for address in last_state['list_tab']:
+            if type(address) == dict:
+                tabSearch = QFrame()
+                search = SearchClientStorage()
+                search.clientStoragesExplorer.change_path(address['New tab'])
+                search.change_search_state.connect(self.save_state_app)
+                tabSearch.setLayout(search)
+                self.tab.addTab(tabSearch, 'New tab')
+
+            elif address == 'Pool':
+                tabPool = QFrame()
+                tabPool.setLayout(self.poolWidget)
+                self.tab.addTab(tabPool, "Pool")
+
+            elif address == 'Fog Nodes':
+                tabFogNodes = QFrame()
+                self.fogNodesWidget.createPool.connect(self.start_pool)
+                self.fogNodesWidget.changeBalance.connect(self.change_balance)
+                self.fogNodesWidget.createClientStorage.connect(self.create_and_open_client_storage)
+                tabFogNodes.setLayout(self.fogNodesWidget)
+                self.tab.addTab(tabFogNodes, "Fog Nodes")
+
+            elif address in addresses_client:
+                tabClientStorages = QFrame()
+                clientStorageWidget = ClientStorageWidget(address)
+                clientStorageWidget.change_ns.connect(self.change_ns_client_storage)
+                #clientStorageWidget.change_balance(int(self.fogNodesWidget.fogNochange_address_client_storagedesTableWidget.item(
+                   # self.fogNodesWidget.fogNodesTableWidget.currentRow(), 3).text()))
+                tabClientStorages.setLayout(clientStorageWidget)
+                self.tab.addTab(tabClientStorages, address)
 
     def _get_index_name_tab(self, address):
         for i in range(self.tab.count()):
@@ -109,23 +153,25 @@ class AppClient(QMainWindow):
 
             tabClientStorages = QFrame()
             clientStorageWidget = ClientStorageWidget(address)
+            clientStorageWidget.change_ns.connect(self.change_ns_client_storage)
             clientStorageWidget.change_balance(int(self.fogNodesWidget.fogNodesTableWidget.item(
                 self.fogNodesWidget.fogNodesTableWidget.currentRow(), 3).text()))
             tabClientStorages.setLayout(clientStorageWidget)
             self.tab.insertTab(self.tab.count() - 1, tabClientStorages, address)
             self.tab.setCurrentIndex(self.tab.count() - 2)
+            self.save_state_app()
 
-    def create_client_storage_for_pool(self):
-        key = LoadJsonFile('data/pool/key').as_list()[0]
-        self.client_storages[self._address_pool] = {'wallet': Wallet(key), 'id_current_dir': None}
-        self.client_storages[self._address_pool]['wallet'].save_private_key('data/clients_manager/key')
-        self.setWindowTitle("DeCloud  —  " + self._address_pool)
-        self.labelAmountClient.setText(self.labelAmountPool.text())
-        self.current_client_storage_full_amount = self.pool_balance
-        self.set_current_address_client_storage(self._address_pool)
-        self.current_id_dir = None
-        self.show_current_dir()
-        self.tab.setCurrentIndex(0)
-        self.sendDomainNameRegistrationAction.setEnabled(True)
-        self._createMenuBar()
+    def change_ns_client_storage(self, ns, address):
+        for i in range(self.fogNodesWidget.fogNodesTableWidget.rowCount()):
+            if self.fogNodesWidget.fogNodesTableWidget.item(i, 4).text() == address:
+                color_background = self.fogNodesWidget.fogNodesTableWidget.item(i, 0).background().color()
+                color_foreground = self.fogNodesWidget.fogNodesTableWidget.item(i, 0).foreground().color()
+                self.fogNodesWidget.fogNodesTableWidget.setSortingEnabled(False)
+                self.fogNodesWidget.fogNodesTableWidget.setItem(i, 0, QTableWidgetItem(ns))
+                self.fogNodesWidget.fogNodesTableWidget.item(i, 0).setBackground(color_background)
+                self.fogNodesWidget.fogNodesTableWidget.item(i, 0).setForeground(color_foreground)
+                self.fogNodesWidget.fogNodesTableWidget.setSortingEnabled(True)
+                break
 
+        self.tab.setTabText(self.tab.currentIndex(), ns)
+        self.tab.findChild(ClientStorageWidget).clientStoragesExplorer.change_address(ns)

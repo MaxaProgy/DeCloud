@@ -28,7 +28,7 @@ class WorkerProcess(Process):
         self.client.start()
 
 
-class ManagerFogNodes:
+class ManagerFogNodes():
     def __init__(self, cpu_count=cpu_count()):
         self.process_worker = []
         self._cpu_count = cpu_count

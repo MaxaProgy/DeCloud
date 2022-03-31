@@ -142,12 +142,30 @@ class DispatcherClientsManager(Process):
 
         app = Flask(__name__)
 
+        def get_address_normal(address):
+            try:
+                return client_pool.request(id_client=address, method='check_valid_address')['address_normal']
+            except:
+                pass
+
+        @app.route('/api/get_all_ns/<string:address>', methods=['GET'])
+        def get_all_ns(address):
+            address = get_address_normal(address)
+            if not address:
+                return jsonify({'error': 'address is not valid'})
+            try:
+                return jsonify({address: client_pool.request(id_client=address, method='get_all_ns')[address]})
+            except:
+                abort(404)
+
         @app.route('/api/registration_domain_name', methods=['POST'])
         def registration_domain_name():
             data = request.json
+            address = get_address_normal(data['address'])
+            if not address:
+                return jsonify({'error': 'address is not valid'})
             try:
-                return jsonify(client_pool.request(id_client=data['address'],
-                                                   method='registration_domain_name', json=data))
+                return jsonify(client_pool.request(id_client=address, method='registration_domain_name', json=data))
             except:
                 abort(404)
 
@@ -244,22 +262,41 @@ class DispatcherClientsManager(Process):
 
             return jsonify(hash_dir)
 
-        @app.route('/api/get_object', methods=['GET'])
-        def get_object():
-            if 'address' not in request.args.keys():
-                return jsonify({'error': 'the request has no key: address'})
-            client = ClientStorageExplorer(request.args['address'])
+        @app.route('/api/get_info_object/<string:address>', methods=['GET'])
+        def get_info_object(address):
+            address = get_address_normal(address)
+            if not address:
+                return jsonify({'error': 'address is not valid'})
+
+            if ('id_object' in request.args) and (request.args['id_object'] != ''):
+                object = ClientStorageExplorer(address).find_object_on_hash(request.args['id_object'])
+                if object:
+                    return jsonify({'name': object.name,
+                                    'type': {FileExplorer: 'file', DirectoryExplorer: 'dir'}[type(object)]})
+                return jsonify({'error': 'object is not found'})
+            return jsonify({'name': '', 'type': 'dir'})
+
+        @app.route('/api/get_object/<string:address>', methods=['GET'])
+        def get_object(address):
+            address_normal = get_address_normal(address)
+            if not address_normal:
+                return jsonify({'error': 'address is not valid'})
+
+            client = ClientStorageExplorer(address_normal)
 
             id_object = None
-            if ('id_object' in request.args.keys()) and (request.args['id_object'] != 'None'):
+            if ('id_object' in request.args.keys()) and (request.args['id_object'] != ''):
                 id_object = request.args['id_object']
 
             cur_obj = client.find_object_on_hash(id_object)
             if cur_obj is None:
                 return jsonify({'error': f'id_object = {id_object} not found'})
 
+            if id_object is None:
+                id_object = ''
+
             if cur_obj.is_file():
-                hashes = json.loads(client._load_replica(cur_obj.hash))[2]
+                hashes = json.loads(client._load_replica(cur_obj.hash))[3]
 
                 def generate_chunk():
                     for hash in hashes:
@@ -273,19 +310,20 @@ class DispatcherClientsManager(Process):
                 else:
                     parent_hash = ''
                 try:
-                    response = client_pool.request(id_client=request.args['address'],
-                                                   method='get_occupied')
+                    response = client_pool.request(id_client=address_normal, method='get_occupied')
                 except:
                     return jsonify(404)
-                dct_files_and_directories = {'parent': parent_hash, 'files': [], 'dirs': [],
+
+                dct_files_and_directories = {'address': address, 'id_object': id_object,
+                                            'parent': parent_hash, 'files': [], 'dirs': [],
                                              'occupied': response['occupied']}
                 if not cur_obj == client.root_dir:
                     dct_files_and_directories['dirs'].append({'name': '..', 'id_object': cur_obj.parent.hash})
                 for child in cur_obj.get_children():
-                    response = client_pool.request(id_client=request.args['address'], method='get_info_object',
+                    response = client_pool.request(id_client=address_normal, method='get_info_object',
                                                    json={'id_object': child.hash})
                     dct_files_and_directories[{FileExplorer: 'files', DirectoryExplorer: 'dirs'}[type(child)]] += \
                         [{'name': child.name, 'id_object': child.hash, 'info': response['info']}]
-                return jsonify(dct_files_and_directories)
+                return jsonify({'json': dct_files_and_directories})
 
         app.run(host='0.0.0.0', port=self._port)

@@ -8,10 +8,9 @@ class ClientState:
     # Класс состояния клиента, его файлов
     def __init__(self, parent, address):
         self._address = address
-        if not Wallet.check_valid_address(address):
-            address = parent._dns.find_address(address)
-            if address:
-                self._address = address
+        address_normal = parent._dns.find_address(address)
+        if address_normal:
+            self._address = address_normal
 
         self._server_fn = parent._server_fn
         self._state_client = {'all_balance': 0, 'occupied_balance': 0, 'objects': {}}
