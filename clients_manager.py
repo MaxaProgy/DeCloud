@@ -1,18 +1,21 @@
 # -*- coding: utf-8 -*
+import os
 import random
+import time
 from multiprocessing import Process
 from queue import Queue
 import json
+from threading import Thread
 
 import requests
 
 from dctp import ClientDCTP
 from fog_node import BaseFogNode, SIZE_REPLICA
 from flask import Flask, request, jsonify, Response, abort
-from utils import get_pools_host, LoadJsonFile, SaveJsonFile
+from utils import get_pools_host, LoadJsonFile, SaveJsonFile, get_path, is_ttl_file, get_random_host_pool
 from wallet import Wallet
 
-SESSION_TIME_LIFE = 24 * 60 * 60
+TIME_TO_LIFE_FILE_IN_CLIENTS_REPLICAS =  60
 
 
 class FileExplorer:
@@ -73,7 +76,7 @@ class ClientStorageExplorer(BaseFogNode):
 
         self._id_fog_node = address
         # Создание корневной - главной директории
-        self._main_dir_data = 'clients_manager'
+        self._main_dir_data = 'clients_manager/clients_replicas'
         self._root_dir = DirectoryExplorer(self._id_fog_node, None, None)
 
         self._load_state()
@@ -83,9 +86,9 @@ class ClientStorageExplorer(BaseFogNode):
         return self._root_dir
 
     def _load_state(self):
-        hashes_explorer = LoadJsonFile(path=f'data/clients_manager/{self._id_fog_node}/state.json').as_list()
+        hashes_explorer = LoadJsonFile(path=f'data/clients_manager/clients_replicas/{self._id_fog_node}/state.json').as_list()
         for hash in hashes_explorer:  # Проходим по всем
-            info_params_obj = json.loads(self._load_replica(hash))  # Формируем json из бинарных данных файла
+            info_params_obj = json.loads(self._download_replica(hash))
             if info_params_obj[0] == 'file':  # Если файл
                 file = FileExplorer(info_params_obj[2], hash)  # Создаем файл
                 # Находим папку и добавляем к ней в качестве child - файл
@@ -95,6 +98,25 @@ class ClientStorageExplorer(BaseFogNode):
                 # Добавляем к ней в качестве child - файл
                 child = DirectoryExplorer(info_params_obj[2], hash, parent)
                 parent.add_child(child)
+
+    def _download_replica(self, hash):
+        replica = self._load_replica(hash)
+        if replica:
+            return replica  # Формируем json из бинарных данных файла
+
+        while True:
+            ip, port, port_cm, _ = get_random_host_pool()
+            try:
+                print(f'Load replica to pool {hash}')
+                response = requests.get(f'http://{ip}:{port}/load_replica/{hash}')
+            except:
+                continue
+            if response.status_code == 200:
+                data = b''
+                for chunk in response.iter_content(SIZE_REPLICA):
+                    data += chunk
+                self._save_replica(data)
+                return data
 
     def save_state(self):
         from queue import Queue
@@ -109,7 +131,7 @@ class ClientStorageExplorer(BaseFogNode):
                 [task_queue.put(child) for child in current_obj.get_children()]
                 hashes_explorer += [child.hash for child in current_obj.get_children()]
             # Сохраняем в файл все хэши к файлам
-            SaveJsonFile(path=f'data/clients_manager/{self._id_fog_node}/state.json',
+            SaveJsonFile(path=f'data/clients_manager/clients_replicas/{self._id_fog_node}/state.json',
                          data=hashes_explorer[1:])  # первый в списке - текущая папка
 
     def find_object_on_hash(self, hash):
@@ -134,8 +156,10 @@ class DispatcherClientsManager(Process):
         self._session_keys = {}
 
     def run(self):
-        pools = get_pools_host('data/pool/pools_host')
-        ip, port, port_cm, _ = pools[random.choice(list(pools.keys()))]
+        self._garbage_collector = GarbageCollectorClientsManager()
+        self._garbage_collector.start()
+
+        ip, port, port_cm, _ = get_random_host_pool()
 
         client_pool = ClientDCTP(f'CM-{Wallet().address}', ip, port_cm)
         client_pool.start()
@@ -296,11 +320,11 @@ class DispatcherClientsManager(Process):
                 id_object = ''
 
             if cur_obj.is_file():
-                hashes = json.loads(client._load_replica(cur_obj.hash))[3]
+                hashes = json.loads(client._download_replica(cur_obj.hash))[3]
 
                 def generate_chunk():
                     for hash in hashes:
-                        yield client._load_replica(hash)
+                        yield client._download_replica(hash)
 
                 return Response(generate_chunk())
             else:
@@ -327,3 +351,33 @@ class DispatcherClientsManager(Process):
                 return jsonify({'json': dct_files_and_directories})
 
         app.run(host='0.0.0.0', port=self._port)
+
+
+class GarbageCollectorClientsManager(Thread):
+    def __init__(self):
+        super().__init__()
+
+    def run(self):
+        path = get_path('data/clients_manager/clients_replicas/')
+        while True:
+            for directory_path, directory_names, file_names in os.walk(path):
+                for file_name in file_names:
+                    if file_name.find('.tmp') != -1 or file_name == 'state.json':
+                        continue
+                    if not is_ttl_file(directory_path + '\\' + file_name,
+                                       TIME_TO_LIFE_FILE_IN_CLIENTS_REPLICAS):
+                        print('remove', directory_path + '\\' + file_name)
+                        os.remove(directory_path + '\\' + file_name)
+                        try:
+                            # Удаляет пустые папки по пути к файлу
+                            dirs = directory_path[len(path):].split('\\')
+                            for i in range(len(dirs), 0, -1):
+                                os.rmdir(path + '\\'.join(dirs[:i]))
+                        except:
+                            # Если папка не пустая, то срабатывает исключение и папка не удаляется
+                            pass
+
+
+            time.sleep(0.1)
+            pass
+

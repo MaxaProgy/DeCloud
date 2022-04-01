@@ -48,11 +48,9 @@ class ClientDCTP(Thread):
 
     # Отправляем запрос серверу
     @staticmethod
-    def _send_data(sock, json=None):
+    def _send_data(sock, json, data):
         json = _json.dumps(json)
-        # jngh
-        sock.send(len(json).to_bytes(4, "big"))
-        sock.send(bytes(json, 'utf-8'))
+        sock.send(len(json).to_bytes(4, "big") + len(data).to_bytes(4, "big") + bytes(json, 'utf-8') + data)
 
     def stop(self):
         self._stoping = True
@@ -68,7 +66,8 @@ class ClientDCTP(Thread):
                 for type_connect in self._type_connection:
                     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     sock.connect((self._ip, self._port))
-                    self._send_data(sock, {'id_worker': self._client_name, 'type': type_connect})
+                    json = _json.dumps({'id_worker': self._client_name, 'type': type_connect})
+                    sock.send(len(json).to_bytes(4, "big") + bytes(json, 'utf-8'))
 
                     self._socks[type_connect] = sock
 
@@ -137,6 +136,10 @@ class ClientDCTP(Thread):
             if json['method'] in self._dict_methods_call:
                 response = self._dict_methods_call[json['method']](json=json['json'], data=data)
                 # если в ответе ни чего нет то создаем ответ
+                if type(response) == bytes:
+                    data = response
+                    response = None
+
                 if response is None:
                     response = {}
 
@@ -145,10 +148,11 @@ class ClientDCTP(Thread):
                     response['status'] = 0
                     response['status_text'] = "success"
             else:
+                data = b''
                 response['status'] = 100
                 response['status_text'] = "not method in request"
             # отправляем ответ серверу
-            self._send_data(self._socks['server to client'], response)
+            self._send_data(self._socks['server to client'], response, data)
 
     def method(self, name_method):
         # Декоратор. Храним ссылки на функции запросов от сервера по их названиям
@@ -241,9 +245,15 @@ class ServerDCTP(Thread):
     def _receive_data(self, sock):
         try:
             # принимаем длину получаемых данных
-            length_response = int.from_bytes(sock.recv(4), 'big')
-            # принимаем данные
-            return _json.loads(sock.recv(length_response).decode('utf-8'))
+            length_json = int.from_bytes(sock.recv(4), 'big')
+            with self.lock_obj:
+                length_data = int.from_bytes(sock.recv(4), 'big')
+                # принимаем данные
+                json = _json.loads(sock.recv(length_json).decode('utf-8'))
+                data =  sock.recv(length_data).decode('utf-8')
+                if data == b'':
+                    return json
+                return json, data
         except:
             # если обрыв соединения
             return
@@ -295,8 +305,7 @@ class ServerDCTP(Thread):
         while True:
             try:
                 sock = self._workers[id_worker]['server to client']
-                sock.send(len(json).to_bytes(4, "big") + len(data).to_bytes(4, "big"))
-                sock.send(bytes(json, 'utf-8') + data)
+                sock.send(len(json).to_bytes(4, "big") + len(data).to_bytes(4, "big") + bytes(json, 'utf-8') + data)
 
                 return self._receive_data(self._workers[id_worker]['server to client'])
             except:

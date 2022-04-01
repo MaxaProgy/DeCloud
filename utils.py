@@ -1,6 +1,7 @@
 import datetime
 import os
 import json
+import random
 import time
 from shutil import copyfile
 from _pysha3 import keccak_256 as sha3_256
@@ -11,7 +12,6 @@ from random import choice
 ERROR_VIEW = True
 INFO_VIEW = True
 WARNING_VIEW = True
-TIME_TO_LIFE_FILE = 3600  # Время жизни файла в секундах
 
 _LETTERS = ascii_lowercase
 NAME_AMOUNT_FORMAT = ['bEx', 'KbEx', 'MbEx', 'GbEx', 'TbEx', 'PbEx', 'EbEx', 'ZbEx', 'YbEx']
@@ -97,8 +97,12 @@ def sorted_dict(data):
     return dict(sorted(data.items(), key=lambda x: x[0]))
 
 
-def is_ttl_file(path):
-    return datetime.datetime.now().timestamp() - os.path.getctime(get_path(path)) < TIME_TO_LIFE_FILE
+def is_ttl_file(path, ttl):
+    return datetime.datetime.now().timestamp() - os.path.getatime(path) < ttl
+
+def get_random_host_pool():
+    pools = get_pools_host('data/pool/pools_host')
+    return pools[random.choice(list(pools.keys()))]
 
 
 class SaveJsonFile:

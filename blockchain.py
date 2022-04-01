@@ -7,12 +7,11 @@ import time
 from _pysha3 import keccak_256 as sha3_256
 from threading import Thread
 from client_state import ClientState
-from dispatcher_save_replicas import DispatcherSaveReplicas
 from dns import DNS
 from fog_node import SIZE_REPLICA, COUNT_REPLICAS_IN_FOG_NODE
 from fog_nodes_state import FogNodesState
 from utils import exists_path, get_path, get_size_file, print_error, \
-    print_info, LoadJsonFile, SaveJsonFile, DispatcherSaveFiles, get_pools_host, get_hash, sorted_dict
+    print_info, LoadJsonFile, SaveJsonFile, DispatcherSaveFiles, get_pools_host, get_hash, sorted_dict, is_ttl_file
 from variables import POOL_ROOT_IP, POOL_PORT
 from wallet import Wallet
 
@@ -20,6 +19,45 @@ AMOUNT_PAY_FOG_NODE = 1024 ** 2
 AMOUNT_PAY_POOL = int(AMOUNT_PAY_FOG_NODE * 0.1)
 COUNT_BLOCK_IN_FILE_BLOCKS = 10_000
 LEN_CACHE_BLOCKS = 1000
+TIME_TO_LIFE_FILE_IN_WAITING_REPLICAS = 3600  # Время жизни файла в секундах
+
+
+class GarbageCollectorWaitingReplicas(Thread):
+    def __init__(self, fog_nodes_state, server_fn):
+        super().__init__()
+        self._fog_nodes_state = fog_nodes_state
+        self._server_fn = server_fn
+
+    def run(self):
+        path = get_path('data/pool/waiting_replicas/')
+        while True:
+            for directory_path, directory_names, file_names in os.walk(path):
+                for file_name in file_names:
+                    if file_name.find('.tmp') != -1:
+                        continue
+
+                    size = get_size_file(path + file_name)
+                    fog_nodes_of_free_size = self._fog_nodes_state.get_of_free_size(size)
+                    with open(path + file_name, 'rb') as f:
+                        data = f.read()
+
+                    is_save_in_replicas = False
+                    for fog_node in fog_nodes_of_free_size:
+                        if not self._fog_nodes_state.exist_replica(fog_node, file_name):
+                            self._server_fn.request(id_worker=fog_node, method='save_replica', data=data)
+                            self._fog_nodes_state.add_hash_replica(fog_node, file_name)
+                        is_save_in_replicas = True
+
+                    if not self._fog_nodes_state.is_empty and not fog_nodes_of_free_size:
+                        # Сделать находжение коэффициента репликации.
+                        # Запись в fog nodes, если нет свободного места в подключенных к пулу нодах
+                        pass
+
+                    if is_save_in_replicas and not is_ttl_file(directory_path + '\\' + file_name,
+                                                               TIME_TO_LIFE_FILE_IN_WAITING_REPLICAS):
+                        os.remove(path + '\\' + file_name)
+            time.sleep(0.1)
+            pass
 
 
 class Blockchain(Thread):
@@ -43,9 +81,10 @@ class Blockchain(Thread):
         self._now_active_pools = {}  # Динамическая загрузка активных пулов со всех активных пулов, изменяемый словарь
         self._hash_last_block = "0"
         self._ready = False  # Готовность блокчейна к работе
-        self._transactions = LoadJsonFile('data/pool/waiting_transaction').as_dict() # Загружаем транзакции, которые ожидают обработки
+        self._transactions = LoadJsonFile(
+            'data/pool/waiting_transaction').as_dict()  # Загружаем транзакции, которые ожидают обработки
         self._fog_nodes_state = FogNodesState()
-        self._dsr = DispatcherSaveReplicas(self._fog_nodes_state, self._server_fn)
+        self._garbage_collector = GarbageCollectorWaitingReplicas(self._fog_nodes_state, self._server_fn)
         self._dns = DNS(self._dispatcher_save)
 
     def add_fog_node(self, id_fog_node, data):
@@ -53,6 +92,9 @@ class Blockchain(Thread):
 
     def del_fog_node(self, id_fog_node):
         self._fog_nodes_state.delete(id_fog_node)
+
+    def get_exist_replica_in_fog_node(self, id_fog_node, hash):
+        return self._fog_nodes_state.exist_replica(id_fog_node, hash)
 
     def new_transaction(self, sender, date, owner=None, count=0, data=None, is_cm=False):
         # Создание новой транзакции
@@ -74,7 +116,8 @@ class Blockchain(Thread):
 
         if data:
             if data and is_cm:  # При наличии контрольной реплики со всеми хешами файла
-                if not exists_path(f'data/pool/waiting_replicas/{data}'):  # Если нет контрольной реплики, то не создаем транзакцию
+                if not exists_path(
+                        f'data/pool/waiting_replicas/{data}'):  # Если нет контрольной реплики, то не создаем транзакцию
                     return 100, 'Error no main replica'
                 path_root = get_path(f'data/pool/waiting_replicas/{data}')
                 count = os.path.getsize(path_root)
@@ -108,7 +151,8 @@ class Blockchain(Thread):
                             requests.post(f'http://{item["params"][0]}:{item["params"][1]}/send_replica', data=f.read())
                         if data_file[0] == 'file' and path:
                             with open(path, 'rb') as f:
-                                requests.post(f'http://{item["params"][0]}:{item["params"][1]}/send_replica', data=f.read())
+                                requests.post(f'http://{item["params"][0]}:{item["params"][1]}/send_replica',
+                                              data=f.read())
                     requests.post(f'http://{item["params"][0]}:{item["params"][1]}/new_transaction', json=transaction)
                 except:
                     pass
@@ -134,8 +178,21 @@ class Blockchain(Thread):
     def get_fog_nodes(self):
         return self._server_fn.get_workers()
 
+    def get_replica_in_fog_node(self, id_fog_node, hash):
+        return self._server_fn.request(id_worker=id_fog_node, method='get_replica', json={'hash': hash})
+
+    def get_size_replica_in_fog_node(self, id_fog_node, hash):
+        return self._server_fn.request(id_worker=id_fog_node, method='get_size', json={'hash': hash})
+
+    def _get_pools_host(self, path):
+        all_pools = get_pools_host(path)
+        if self._wallet_pool.address in all_pools:
+            all_pools.pop(self._wallet_pool.address)
+        return all_pools
+
     def register_pool(self):
-        all_pools = get_pools_host('data/pool/pools_host')
+        all_pools = self._get_pools_host('data/pool/pools_host')
+
         for _, item in all_pools.items():
             try:
                 requests.post(f'http://{item[0]}:{item[1]}/register_pool',
@@ -146,7 +203,7 @@ class Blockchain(Thread):
 
     def _get_all_active_pools(self):
         self._now_active_pools = {}
-        all_pools = get_pools_host('data/pool/pools_host')
+        all_pools = self._get_pools_host('data/pool/pools_host')
 
         for address in sorted(list(all_pools.keys()), key=lambda A: random.random()):
             if address not in self._now_active_pools:
@@ -171,8 +228,7 @@ class Blockchain(Thread):
                                                              'fog_nodes': self.get_count_fog_nodes()}
         if "" in all_pools:
             all_pools.pop("")
-        if self._wallet_pool.address in all_pools:
-            all_pools.pop(self._wallet_pool.address)
+
         SaveJsonFile('data/pool/pools_host', all_pools)
         return self._now_active_pools.copy()
 
@@ -295,7 +351,7 @@ class Blockchain(Thread):
                 break
             time.sleep(5)
 
-        self._dsr.start()
+        self._garbage_collector.start()
 
         print(f'Start POOL {self._wallet_pool.address}')
 

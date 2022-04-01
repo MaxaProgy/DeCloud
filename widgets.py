@@ -17,7 +17,8 @@ from fog_nodes_manager import ManagerFogNodes
 from pool import Pool
 from utils import LoadJsonFile, amount_format
 from wallet import Wallet
-from variables import PORT_DISPATCHER_CLIENTS_MANAGER, DNS_NAME, POOL_BACKGROUND_COLOR, CLIENT_STORAGE_FOREGROUND_COLOR
+from variables import PORT_DISPATCHER_CLIENTS_MANAGER, DNS_NAME, POOL_BACKGROUND_COLOR, CLIENT_STORAGE_FOREGROUND_COLOR, \
+    BACKGROUND_COLOR
 
 
 class ClientStoragesExplorer(QTableWidget):
@@ -116,7 +117,8 @@ class ClientStoragesExplorer(QTableWidget):
             with open(file_name, 'wb') as f:
                 [f.write(chunk) for chunk in response.iter_content(SIZE_REPLICA)]
             os.startfile(file_name)
-            self.message.emit('ok')
+            if self._current_id != self.item(self.currentRow(), 0).text():
+                self.message.emit('ok')
 
     def update_data(self):
         while True:
@@ -444,10 +446,11 @@ class PoolWidget(QVBoxLayout):
         self.labelAmountPool.setText(amount_format(amount))
 
 
-class FogNodesWidget(QVBoxLayout):
+class FogNodesWidget(QHBoxLayout):
     createPool = pyqtSignal(str)
-    changeBalance = pyqtSignal(str, int)
+    changeBalanceClientsStorage = pyqtSignal(str, int)
     createClientStorage = pyqtSignal(str)
+    changeBalancePool = pyqtSignal(int)
 
     def __init__(self):
         super().__init__()
@@ -493,36 +496,28 @@ class FogNodesWidget(QVBoxLayout):
         self.fogNodesTableWidget.setContextMenuPolicy(Qt.CustomContextMenu)
         self.fogNodesTableWidget.customContextMenuRequested.connect(self.fog_node_context_menu_open)
         self.fogNodesTableWidget.cellClicked.connect(self.current_item_change)
-        print(787878787878787)
         self.mfn = ManagerFogNodes()
         self.mfn.load_fog_nodes('data/fog_nodes/key')
         self.mfn.on_change_balance = self.on_change_balance
         self.mfn.on_change_state = self.on_change_state
-        print(78787878333333333333333337878787)
-        layout = QHBoxLayout()
+        layout = QVBoxLayout()
         self.createNodeButton = QPushButton("Create Fog_Node")
         self.createNodeButton.clicked.connect(self.create_node)
-        print(99922332)
         self.create_and_open_PoolButton = QPushButton("Create Pool")
         self.create_and_open_PoolButton.clicked.connect(self.create_and_open_pool)
-        print(787878783333333333333333378787445645645646546444444444444487)
         self.sendByteExButton = QPushButton("Send Bytes")
         self.sendByteExButton.clicked.connect(self.send_byteEx)
         self.create_and_open_client_storageButton = QPushButton("Create Client Storage")
         self.create_and_open_client_storageButton.clicked.connect(self.create_client_storage)
         self.create_and_open_client_storageButton.setVisible(self.fogNodesTableWidget.rowCount() > 0)
-        print(1234567890987654321234567898765432, self.address_pool)
-        print(95959595959595995959959595959595959, self.fogNodesTableWidget.rowCount())
         self.create_and_open_PoolButton.setVisible(not self.address_pool and self.fogNodesTableWidget.rowCount() > 0)
-        print(7878787833333333333333333787874444444444444487)
         layout.addWidget(self.createNodeButton)
         layout.addWidget(self.create_and_open_PoolButton)
         layout.addWidget(self.create_and_open_client_storageButton)
         layout.addWidget(self.sendByteExButton)
         layout.addStretch(1)
-
-        self.addLayout(layout)
         self.addWidget(self.fogNodesTableWidget)
+        self.addLayout(layout)
 
     def current_item_change(self, row, column):
         self.create_and_open_PoolButton.setVisible(
@@ -567,10 +562,12 @@ class FogNodesWidget(QVBoxLayout):
                 self.fogNodesTableWidget.setItem(i, 2, QTableWidgetItem(amount_format(data['amount'])))
                 self.fogNodesTableWidget.setItem(i, 3, QTableWidgetItem(str(data['amount'])))
                 self.fogNodesTableWidget.item(i, 2).setTextAlignment(Qt.AlignRight)
-                self.changeBalance.emit(data['id_fog_node'], data['amount'])
+                if self.fogNodesTableWidget.item(i, 4).text() == self.address_pool:
+                    self.changeBalancePool.emit(data['amount'])
+                self.changeBalanceClientsStorage.emit(self.fogNodesTableWidget.item(i, 0).text(), data['amount'])
                 self.fogNodesTableWidget.hide()
                 self.fogNodesTableWidget.show()
-                break
+                return
 
     def on_change_state(self, data):
         no_exist_node = True
@@ -587,6 +584,7 @@ class FogNodesWidget(QVBoxLayout):
             self.fogNodesTableWidget.setRowCount(row + 1)
             self.fogNodesTableWidget.setSortingEnabled(False)
             self.fogNodesTableWidget.setItem(row, 0, QTableWidgetItem(data['id_fog_node']))
+            self.fogNodesTableWidget.item(row, 0).setBackground(QColor(BACKGROUND_COLOR))
             self.fogNodesTableWidget.setItem(row, 4, QTableWidgetItem(data['id_fog_node']))
             self.fogNodesTableWidget.setItem(row, 1, QTableWidgetItem(data['state']))
             self.fogNodesTableWidget.setItem(row, 3, QTableWidgetItem('0'))
@@ -709,15 +707,15 @@ class SearchClientStorage(QVBoxLayout):
 
     def open_client_storage(self):
         path = self.search.text()
+
         if path != self.clientStoragesExplorer.get_path():
-            self.clientStoragesExplorer.change_path(path)
             self.change_search_state.emit(path)
+        self.clientStoragesExplorer.change_path(path)
 
     def update_dir(self, data):
         if not data:
             self.clientStoragesExplorer.setRowCount(0)
             return
-        print(data)
         self.search.setText(data['address'] + '/' + data['id_object'])
         self.clientStoragesExplorer.setRowCount(sum([(len(data[type])) for type in ['dirs', 'files']]))
         row = 0

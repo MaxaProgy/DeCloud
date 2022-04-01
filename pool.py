@@ -245,6 +245,15 @@ class Pool(Process):
             if exists_path(f'data/pool/waiting_replicas/{hash_replica}'):
                 with open(get_path(f'data/pool/waiting_replicas/{hash_replica}'), 'rb') as f:
                     return Response(f.read())
+            # Запрос у активных фогов
+            for id_fog_node in self._blockchain.get_fog_nodes():
+                if self._blockchain.get_exist_replica_in_fog_node(id_fog_node, hash_replica):
+                    response = self._blockchain.get_replica_in_fog_node(id_fog_node, hash_replica)
+                    if response[1] == b'' and \
+                            self._blockchain.get_size_replica_in_fog_node(id_fog_node, hash_replica) is not None:
+                        return response[1]
+                    elif response[1] != b'':
+                        return response[1]
             abort(404)
 
         @app.route('/get_balance/<address>', methods=['GET'])

@@ -62,9 +62,8 @@ class BaseFogNode:
                 data = f.read()
             if hash != sha3_256(data).hexdigest():
                 self._delete_replica(hash)
-        if not exists_path(path):
-            raise Exception('В будущем дописать, если файла нет то делать запрос в pool')
-        return data  # Возвращаем бинарный данные файла
+        if exists_path(path):
+            return data  # Возвращаем бинарный данные файла
 
     def _delete_replica(self, id_replica):
         # Удаляем файл и пустые папки с названием id_replica
@@ -199,6 +198,17 @@ class FogNode(BaseFogNode, Thread):
             @pool_client.method('save_replica')
             def save_replica(json, data):
                 self._save_replica(data)
+
+            @pool_client.method('get_replica')
+            def get_replica(json, data):
+                return self._load_replica(json['hash'])
+
+            @pool_client.method('get_size')
+            def get_size(json, data):
+                path = f'data/{self._main_dir_data}/{self._id_fog_node}/' + \
+                       '/'.join([json['hash'][i:i + 2] for i in range(0, len(json['hash']), 2)])
+                if exists_path(path):
+                    return os.path.getsize(get_path(path))
 
             pool_client.start()
 

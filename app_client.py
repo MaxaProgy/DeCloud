@@ -4,7 +4,7 @@ from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QMainWindow, QDesktopWidget, QTabWidget, QFrame, QMenu, QAction, QTabBar, QToolButton, \
     QLabel, QTableWidgetItem
 
-from variables import POOL_BACKGROUND_COLOR
+from variables import POOL_BACKGROUND_COLOR, BACKGROUND_COLOR
 from widgets import FogNodesWidget, PoolWidget, ClientStorageWidget, SearchClientStorage
 from utils import exists_path, LoadJsonFile, SaveJsonFile
 from wallet import Wallet
@@ -21,9 +21,7 @@ class AppClient(QMainWindow):
         self.geometry = QDesktopWidget().availableGeometry()
         self.setGeometry(1000, 1000, 1000, 800)
         self.move(500, 100)
-        print(111111111111)
         self.fogNodesWidget = FogNodesWidget()
-        print(55555555555555)
         self.poolWidget = PoolWidget()
         self.tab = QTabWidget()
         self.tab.setTabsClosable(True)
@@ -35,17 +33,18 @@ class AppClient(QMainWindow):
         else:
             tabFogNodes = QFrame()
             self.fogNodesWidget.createPool.connect(self.start_pool)
-            self.fogNodesWidget.changeBalance.connect(self.change_balance)
+            self.fogNodesWidget.changeBalanceClientsStorage.connect(self.change_balance_clients_storage)
+            self.fogNodesWidget.changeBalancePool.connect(self.change_balance_pool)
             self.fogNodesWidget.createClientStorage.connect(self.create_and_open_client_storage)
             tabFogNodes.setLayout(self.fogNodesWidget)
             self.tab.addTab(tabFogNodes, "Fog Nodes")
-        print(999999999999999)
         self.tab.addTab(QLabel(""), '')
         self.addTabButton = QToolButton()
         self.addTabButton.setText('+')
         self.addTabButton.clicked.connect(self.new_window)
         self.tab.tabBar().setTabButton(self.tab.count() - 1, QTabBar.RightSide, self.addTabButton)
         self.tab.setTabEnabled(self.tab.count() - 1, False)
+
         self.setCentralWidget(self.tab)
 
         self.setWindowTitle("DeCloud")
@@ -59,10 +58,10 @@ class AppClient(QMainWindow):
         self.tab.insertTab(self.tab.count() - 1, tabSearch, 'New tab')
         self.tab.setCurrentIndex(self.tab.count() - 2)
 
-    def change_balance(self, address, amount):
-        if address == self._address_pool:
-            self.poolWidget.change_balance_pool(amount)
+    def change_balance_pool(self, amount):
+        self.poolWidget.change_balance_pool(amount)
 
+    def change_balance_clients_storage(self, address, amount):
         for i in range(self.tab.count()):
             if self.tab.tabText(i) == address:
                 self.tab.widget(i).findChild(ClientStorageWidget).change_balance(amount)
@@ -94,7 +93,7 @@ class AppClient(QMainWindow):
         for i in range(self.tab.count()):
             name_tab = self.tab.tabText(i)
             if name_tab == 'New tab':
-                new_data_state.append({'New tab': self.tab.findChild(SearchClientStorage).search.text()})
+                new_data_state.append({'New tab': self.tab.widget(i).findChild(SearchClientStorage).search.text()})
             else:
                 new_data_state.append(name_tab)
         SaveJsonFile('data/clients_manager/state_app', {'list_tab': new_data_state})
@@ -119,7 +118,8 @@ class AppClient(QMainWindow):
             elif address == 'Fog Nodes':
                 tabFogNodes = QFrame()
                 self.fogNodesWidget.createPool.connect(self.start_pool)
-                self.fogNodesWidget.changeBalance.connect(self.change_balance)
+                self.fogNodesWidget.changeBalanceClientsStorage.connect(self.change_balance_clients_storage)
+                self.fogNodesWidget.changeBalancePool.connect(self.change_balance_pool)
                 self.fogNodesWidget.createClientStorage.connect(self.create_and_open_client_storage)
                 tabFogNodes.setLayout(self.fogNodesWidget)
                 self.tab.addTab(tabFogNodes, "Fog Nodes")
@@ -164,14 +164,16 @@ class AppClient(QMainWindow):
     def change_ns_client_storage(self, ns, address):
         for i in range(self.fogNodesWidget.fogNodesTableWidget.rowCount()):
             if self.fogNodesWidget.fogNodesTableWidget.item(i, 4).text() == address:
-                color_background = self.fogNodesWidget.fogNodesTableWidget.item(i, 0).background().color()
+                color_background = self.fogNodesWidget.fogNodesTableWidget.item(i, 0).background().color().name()
+                if color_background != POOL_BACKGROUND_COLOR:
+                    color_background = BACKGROUND_COLOR
                 color_foreground = self.fogNodesWidget.fogNodesTableWidget.item(i, 0).foreground().color()
                 self.fogNodesWidget.fogNodesTableWidget.setSortingEnabled(False)
                 self.fogNodesWidget.fogNodesTableWidget.setItem(i, 0, QTableWidgetItem(ns))
-                self.fogNodesWidget.fogNodesTableWidget.item(i, 0).setBackground(color_background)
+                self.fogNodesWidget.fogNodesTableWidget.item(i, 0).setBackground(QColor(color_background))
                 self.fogNodesWidget.fogNodesTableWidget.item(i, 0).setForeground(color_foreground)
                 self.fogNodesWidget.fogNodesTableWidget.setSortingEnabled(True)
                 break
 
         self.tab.setTabText(self.tab.currentIndex(), ns)
-        self.tab.findChild(ClientStorageWidget).clientStoragesExplorer.change_address(ns)
+        self.tab.widget(self.tab.currentIndex()).findChild(ClientStorageWidget).clientStoragesExplorer.change_address(ns)
