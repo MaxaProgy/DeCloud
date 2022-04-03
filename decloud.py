@@ -40,7 +40,8 @@ if __name__ == '__main__':
         app = QApplication(sys.argv)
         dispatcher = DispatcherClientsManager(PORT_DISPATCHER_CLIENTS_MANAGER)
         dispatcher.start()
-
+        app.setStyleSheet("""QMainWindow {background: transparent; }
+                        """)
         client_manager = AppClient()
         client_manager.show()
         sys.exit(app.exec_())

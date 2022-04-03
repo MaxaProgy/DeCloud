@@ -95,7 +95,7 @@ class Pool(Process):
 
         @server_CM.method('get_all_ns')
         def get_all_ns(json, data):
-            return self._blockchain._dns.get_all_ns(json['id_client'])
+            return {'all_ns': self._blockchain._dns.get_all_ns(json['id_client'])}
 
         @server_CM.method('registration_domain_name')
         def registration_domain_name(json, data):

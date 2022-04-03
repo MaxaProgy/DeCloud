@@ -174,22 +174,27 @@ class DispatcherClientsManager(Process):
 
         @app.route('/api/get_all_ns/<string:address>', methods=['GET'])
         def get_all_ns(address):
-            address = get_address_normal(address)
-            if not address:
+            if not address or not Wallet.check_valid_address(address):
                 return jsonify({'error': 'address is not valid'})
             try:
-                return jsonify({address: client_pool.request(id_client=address, method='get_all_ns')[address]})
+                return jsonify(client_pool.request(id_client=address, method='get_all_ns')['all_ns'])
             except:
                 abort(404)
+
+        @app.route('/api/address_normal/<string:ns>', methods=['GET'])
+        def address_normal(ns):
+            address = get_address_normal(ns)
+            if not address:
+                return jsonify({'error': 'address is not valid'})
+            return jsonify(address)
 
         @app.route('/api/registration_domain_name', methods=['POST'])
         def registration_domain_name():
             data = request.json
-            address = get_address_normal(data['address'])
-            if not address:
+            if not data['address'] or not Wallet.check_valid_address(data['address']):
                 return jsonify({'error': 'address is not valid'})
             try:
-                return jsonify(client_pool.request(id_client=address, method='registration_domain_name', json=data))
+                return jsonify(client_pool.request(id_client=data['address'], method='registration_domain_name', json=data))
             except:
                 abort(404)
 

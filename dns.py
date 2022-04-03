@@ -20,4 +20,4 @@ class DNS:
             return self._ns_table[name]
 
     def get_all_ns(self, address):
-        return {address: [key for key, item in self._ns_table.items() if item == address]}
+        return [key for key, item in self._ns_table.items() if item == address]
