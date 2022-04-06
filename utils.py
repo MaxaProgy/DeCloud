@@ -206,15 +206,15 @@ class DispatcherSaveFiles:
         self._tasks = set()
 
     def add(self, path, data, sort_keys=False):
-        self._tasks.add(path)
+        self._tasks.add(path + '.tmp')
         # Сначала сохраняем в файл tmp (обновляем предыдущую версию)
-        with open(get_path(path) + '.tmp', 'w') as f:
+        with open(get_path(path + '.tmp'), 'w') as f:
             f.write(json.dumps(data, sort_keys=sort_keys))
 
     def commit(self):
         for path in self._tasks:
             path_rebuild = get_path(path)
             # В случае удачного сохранения в tmp - копируем tmp в основной
-            copyfile(path_rebuild + '.tmp', path_rebuild)
-            os.remove(path_rebuild + '.tmp')
+            copyfile(path_rebuild, path_rebuild[:-4])
+            os.remove(path_rebuild)
         self._tasks = set()

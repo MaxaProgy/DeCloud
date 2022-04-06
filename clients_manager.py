@@ -383,6 +383,6 @@ class GarbageCollectorClientsManager(Thread):
                             pass
 
 
-            time.sleep(0.1)
-            pass
+                    time.sleep(0.1)
+            time.sleep(1)
 

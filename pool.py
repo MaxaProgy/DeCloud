@@ -9,7 +9,7 @@ from blockchain import Blockchain
 from dctp import ServerDCTP, send_status_code
 from fog_nodes_manager import ManagerFogNodes
 from utils import exists_path, get_path, append_pool_host, LoadJsonFile, get_pools_host, SaveJsonFile
-from variables import POOL_PORT, POOL_CM_PORT, POOL_FN_PORT
+from variables import POOL_PORT, POOL_CM_PORT, POOL_FN_PORT, PORT_APP
 from wallet import Wallet
 import requests
 import json as _json
@@ -17,12 +17,13 @@ from random import choice
 
 
 class Pool(Process):
-    def __init__(self, private_key, port_pool=POOL_PORT, port_cm=POOL_CM_PORT, port_fn=POOL_FN_PORT):
+    def __init__(self, private_key, port_pool=POOL_PORT, port_cm=POOL_CM_PORT, port_fn=POOL_FN_PORT, port_app=None):
         super().__init__()
         self._wallet = Wallet(private_key)
         SaveJsonFile('data/pool/key', private_key)
         self._port_cm = port_cm
         self._port_fn = port_fn
+        self._port_app = port_app
         self._port_pool = port_pool
         self._active_pools = {}
         self._blockchain_thread = None
@@ -47,6 +48,11 @@ class Pool(Process):
     def run(self):
         if not Wallet.check_valid_address(self._wallet.address):
             raise Exception(f'Pool address {self._wallet.address} is not valid')
+        if self._port_app:
+            server_APP = ServerDCTP(self._port_app)
+            server_APP.start()
+        else:
+            server_APP = None
 
         server_CM = ServerDCTP(self._port_cm)
 
@@ -148,9 +154,11 @@ class Pool(Process):
         # получаем ip нашего пула
         self._ip_pool = self.get_my_ip()
 
-        self._blockchain_thread = Blockchain(server_FN, self._wallet, self._ip_pool,
+        self._blockchain_thread = Blockchain(server_FN, server_APP, self._wallet, self._ip_pool,
                                              self._port_pool, self._port_cm, self._port_fn)
         self._blockchain_thread.start()
+
+
 
         while True:
             if not (flask_thread.is_alive() and server_FN.is_alive()

@@ -56,12 +56,12 @@ class GarbageCollectorWaitingReplicas(Thread):
                     if is_save_in_replicas and not is_ttl_file(directory_path + '\\' + file_name,
                                                                TIME_TO_LIFE_FILE_IN_WAITING_REPLICAS):
                         os.remove(path + '\\' + file_name)
-            time.sleep(0.1)
-            pass
+                    time.sleep(0.1)
+            time.sleep(1)
 
 
 class Blockchain(Thread):
-    def __init__(self, server_fn, pool_wallet, _ip_pool, port_pool, port_cm_pool, port_fn_pool):
+    def __init__(self, server_fn, server_app, pool_wallet, _ip_pool, port_pool, port_cm_pool, port_fn_pool):
         super().__init__()
         if not exists_path('data/pool/pools_host'):
             # Создание по умолчанию файла хостов, известных мне пуллов
@@ -74,6 +74,7 @@ class Blockchain(Thread):
         self._port_pool = port_pool
         self._port_cm_pool = port_cm_pool
         self._port_fn_pool = port_fn_pool
+        self._server_app = server_app
         self._dispatcher_save = DispatcherSaveFiles()
         self._genesis_time = None
         self._blocks = BlockchainState(self._dispatcher_save)
@@ -202,6 +203,7 @@ class Blockchain(Thread):
                 pass
 
     def _get_all_active_pools(self):
+        time.sleep(2)
         self._now_active_pools = {}
         all_pools = self._get_pools_host('data/pool/pools_host')
 
@@ -375,7 +377,6 @@ class Blockchain(Thread):
 
             while True:
                 self._now_active_pools = {}
-                time.sleep(1)
                 self._all_active_pools = self._get_all_active_pools()
                 active_pools_with_fog_nodes = [key for key, item in self.all_active_pools().items() if
                                                item['fog_nodes'] != 0]
@@ -481,6 +482,15 @@ class Blockchain(Thread):
                 ClientState(self, transaction["owner"]).all_balance += transaction['count']
 
         self._dispatcher_save.commit()
+
+        if self._server_app:
+            block['hash_block'] = hash_last_block
+            all_active_pools_for_app = self.all_active_pools()
+            len_all_active_fog_nodes_for_app = sum([all_active_pools_for_app[key]['fog_nodes'] for key in all_active_pools_for_app])
+            data = {'block': block, 'active_pool': len(all_active_pools_for_app),
+                    'active_fog_nodes': len_all_active_fog_nodes_for_app}
+            for worker in self._server_app.get_workers():
+                self._server_app.request(id_worker=worker, method='update_app_pool', json=data)
         return hash_last_block
 
     def get_balance(self, address):

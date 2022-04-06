@@ -1,7 +1,7 @@
 import sys
 from fog_nodes_manager import ManagerFogNodes
 from register_domain_name import register_domain_name
-from variables import POOL_PORT,POOL_FN_PORT,POOL_CM_PORT,PORT_DISPATCHER_CLIENTS_MANAGER
+from variables import POOL_PORT, POOL_FN_PORT, POOL_CM_PORT,PORT_DISPATCHER_CLIENTS_MANAGER,PORT_APP
 from PyQt5.QtWidgets import QApplication
 from command_parser import CommandParser
 from app_client import AppClient
@@ -29,7 +29,8 @@ if __name__ == '__main__':
             if result:
                 if result[0] == 'create_pool':
                     params = result[1]
-                    pool = Pool(port_pool=params['--port_pool'], port_cm=params['--port_cm'], port_fn=params['--port_fn'])
+                    pool = Pool(port_pool=params['--port_pool'], port_cm=params['--port_cm'],
+                                port_fn=params['--port_fn'])
                     pool.start()
                 if result[0] == 'create_fog_node':
                     mfn.add_fog_node()
@@ -37,11 +38,14 @@ if __name__ == '__main__':
                 print('Неизвестная команда')
 
     else:
+        try:
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("decloud")
+        except:
+            pass
         app = QApplication(sys.argv)
         dispatcher = DispatcherClientsManager(PORT_DISPATCHER_CLIENTS_MANAGER)
         dispatcher.start()
-        app.setStyleSheet("""QMainWindow {background: transparent; }
-                        """)
         client_manager = AppClient()
         client_manager.show()
         sys.exit(app.exec_())
