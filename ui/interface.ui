@@ -192,6 +192,9 @@ QTabBar::close-button {
                  <height>0</height>
                 </size>
                </property>
+               <property name="toolTip">
+                <string>Open tool menu</string>
+               </property>
                <property name="styleSheet">
                 <string notr="true"/>
                </property>
@@ -260,6 +263,9 @@ QTabBar::close-button {
                  <height>0</height>
                 </size>
                </property>
+               <property name="toolTip">
+                <string>Open the fog nodes management tab</string>
+               </property>
                <property name="styleSheet">
                 <string notr="true"/>
                </property>
@@ -286,6 +292,9 @@ QTabBar::close-button {
                  <height>0</height>
                 </size>
                </property>
+               <property name="toolTip">
+                <string>Open a window with all client storages</string>
+               </property>
                <property name="text">
                 <string>    All Storages</string>
                </property>
@@ -308,6 +317,9 @@ QTabBar::close-button {
                  <width>50</width>
                  <height>0</height>
                 </size>
+               </property>
+               <property name="toolTip">
+                <string>Open pool management tab</string>
                </property>
                <property name="text">
                 <string>    Open Pool</string>
@@ -365,6 +377,9 @@ QTabBar::close-button {
                  <height>0</height>
                 </size>
                </property>
+               <property name="toolTip">
+                <string>Create a new fog node</string>
+               </property>
                <property name="text">
                 <string>    Add Foge Node</string>
                </property>
@@ -387,6 +402,9 @@ QTabBar::close-button {
                  <width>50</width>
                  <height>0</height>
                 </size>
+               </property>
+               <property name="toolTip">
+                <string>Create a pool</string>
                </property>
                <property name="text">
                 <string>    Create Pool</string>
@@ -411,6 +429,9 @@ QTabBar::close-button {
                  <height>0</height>
                 </size>
                </property>
+               <property name="toolTip">
+                <string>Create folder in storage</string>
+               </property>
                <property name="text">
                 <string>    Create Folder</string>
                </property>
@@ -433,6 +454,9 @@ QTabBar::close-button {
                  <width>50</width>
                  <height>0</height>
                 </size>
+               </property>
+               <property name="toolTip">
+                <string>Open client storage</string>
                </property>
                <property name="text">
                 <string>    Create Client Storage</string>
@@ -457,6 +481,9 @@ QTabBar::close-button {
                  <height>0</height>
                 </size>
                </property>
+               <property name="toolTip">
+                <string>Send new file in storage</string>
+               </property>
                <property name="text">
                 <string>    Send File</string>
                </property>
@@ -480,6 +507,9 @@ QTabBar::close-button {
                  <height>0</height>
                 </size>
                </property>
+               <property name="toolTip">
+                <string>Create new name client storage</string>
+               </property>
                <property name="text">
                 <string>    Add NS</string>
                </property>
@@ -502,6 +532,9 @@ QTabBar::close-button {
                  <width>50</width>
                  <height>0</height>
                 </size>
+               </property>
+               <property name="toolTip">
+                <string>Send byteEx</string>
                </property>
                <property name="text">
                 <string>    Send ByteEx</string>
@@ -572,6 +605,9 @@ QTabBar::close-button {
                  <height>0</height>
                 </size>
                </property>
+               <property name="toolTip">
+                <string>Open information page</string>
+               </property>
                <property name="text">
                 <string>    Information</string>
                </property>
@@ -594,6 +630,9 @@ QTabBar::close-button {
                  <width>50</width>
                  <height>0</height>
                 </size>
+               </property>
+               <property name="toolTip">
+                <string>Open settings page</string>
                </property>
                <property name="text">
                 <string>    Settings</string>
@@ -1106,6 +1145,9 @@ QPushButton:hover {
                  <height>30</height>
                 </size>
                </property>
+               <property name="toolTip">
+                <string>We love our users ♡</string>
+               </property>
                <property name="text">
                 <string/>
                </property>
@@ -1125,6 +1167,9 @@ QPushButton:hover {
                  <weight>75</weight>
                  <bold>true</bold>
                 </font>
+               </property>
+               <property name="toolTip">
+                <string>We love our users ♡</string>
                </property>
                <property name="text">
                 <string>Decloud</string>
@@ -1166,6 +1211,9 @@ QPushButton:hover {
              </property>
              <item>
               <widget class="QPushButton" name="minimizeButton">
+               <property name="toolTip">
+                <string>Minimize window</string>
+               </property>
                <property name="text">
                 <string/>
                </property>
@@ -1183,6 +1231,9 @@ QPushButton:hover {
              </item>
              <item>
               <widget class="QPushButton" name="restoreButton">
+               <property name="toolTip">
+                <string>Restore window</string>
+               </property>
                <property name="styleSheet">
                 <string notr="true"/>
                </property>
@@ -1203,6 +1254,9 @@ QPushButton:hover {
              </item>
              <item>
               <widget class="QPushButton" name="closeButton">
+               <property name="toolTip">
+                <string>Close window</string>
+               </property>
                <property name="styleSheet">
                 <string notr="true">QPushButton {
 	border-radius:5px;
