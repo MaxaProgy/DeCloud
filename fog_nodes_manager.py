@@ -25,6 +25,16 @@ class WorkerProcess(Process):
         def get_balance(json, data):
             return self.fog_nodes[json['address']].pool_client.request(method='get_balance')
 
+        @self.client.method('stop')
+        def stop(json, data):
+            from time import sleep
+
+            [self.fog_nodes[address].stop() for address in self.fog_nodes]
+            while sum([self.fog_nodes[address].is_alive() for address in self.fog_nodes]) != 0:
+                sleep(0.1)
+
+            self.client.stop()
+
         self.client.start()
 
 
@@ -61,11 +71,13 @@ class ManagerFogNodes():
     def on_change_balance(self, data):
         pass
 
-    def load_fog_nodes(self, path):
-        for key in LoadJsonFile(path).as_list():
+    def load_fog_nodes(self):
+        for key in LoadJsonFile('data/fog_nodes/key').as_list():
             self.add_fog_node(key)
 
     def add_fog_node(self, private_key=None):
+        from threading import Thread
+
         wallet = Wallet(private_key)
         if private_key is None:
             wallet.save_private_key('data/fog_nodes/key')
@@ -74,11 +86,28 @@ class ManagerFogNodes():
                     private_key = key
                     break
         self.process_worker[self._count_fog_nodes % self._cpu_count]['process_clients'].append(wallet.address)
-        self.request(wallet.address, 'add_fog_node', json={'private_key': private_key})
         self._count_fog_nodes += 1
+        thread = Thread(target=self.request, args=[wallet.address, 'add_fog_node', {'private_key': private_key}])
+        thread.start()
+
 
     def request(self, address, method, json={}):
+        from time import sleep
+
         for worker in self.process_worker:
             if address in worker['process_clients']:
                 json['address'] = address
-                return self._server_fog_nodes.request(id_worker=worker['process_name'], method=method, json=json)
+                while True:
+                    try:
+                        if self._server_fog_nodes.request(id_worker=worker['process_name'],
+                                                          method=method, json=json)[0]['status'] == 0:
+                            break
+                    except:
+                        sleep(0.1)
+    def close(self):
+        for worker in self.process_worker:
+            try:
+                self._server_fog_nodes.request(id_worker=worker['process_name'], method="stop")
+            except:
+                pass
+        self._server_fog_nodes.stop()

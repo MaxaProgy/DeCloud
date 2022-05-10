@@ -546,17 +546,30 @@ class Ui_MainWindow(object):
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
         MainWindow.setWindowTitle(_translate("MainWindow", "MainWindow"))
+        self.openToolsButton.setToolTip(_translate("MainWindow", "Open tool menu"))
+        self.allFogNodesButton.setToolTip(_translate("MainWindow", "Open the fog nodes management tab"))
         self.allFogNodesButton.setText(_translate("MainWindow", "    All Fog Nodes"))
+        self.allStoragesButton.setToolTip(_translate("MainWindow", "Open a window with all client storages"))
         self.allStoragesButton.setText(_translate("MainWindow", "    All Storages"))
+        self.openPoolButton.setToolTip(_translate("MainWindow", "Open pool management tab"))
         self.openPoolButton.setText(_translate("MainWindow", "    Open Pool"))
+        self.addFogNodeButton.setToolTip(_translate("MainWindow", "Create a new fog node"))
         self.addFogNodeButton.setText(_translate("MainWindow", "    Add Foge Node"))
+        self.createPoolButton.setToolTip(_translate("MainWindow", "Create a pool"))
         self.createPoolButton.setText(_translate("MainWindow", "    Create Pool"))
+        self.createFolderButton.setToolTip(_translate("MainWindow", "Create folder in storage"))
         self.createFolderButton.setText(_translate("MainWindow", "    Create Folder"))
+        self.openClientStorageButton.setToolTip(_translate("MainWindow", "Open client storage"))
         self.openClientStorageButton.setText(_translate("MainWindow", "    Create Client Storage"))
+        self.sendFileButton.setToolTip(_translate("MainWindow", "Send new file in storage"))
         self.sendFileButton.setText(_translate("MainWindow", "    Send File"))
+        self.addNSButton.setToolTip(_translate("MainWindow", "Create new name client storage"))
         self.addNSButton.setText(_translate("MainWindow", "    Add NS"))
+        self.sendByteExButton.setToolTip(_translate("MainWindow", "Send byteEx"))
         self.sendByteExButton.setText(_translate("MainWindow", "    Send ByteEx"))
+        self.settingsButton.setToolTip(_translate("MainWindow", "Open information page"))
         self.settingsButton.setText(_translate("MainWindow", "    Information"))
+        self.informationButton.setToolTip(_translate("MainWindow", "Open settings page"))
         self.informationButton.setText(_translate("MainWindow", "    Settings"))
         self.label_3.setText(_translate("MainWindow", "Information"))
         self.label_2.setText(_translate("MainWindow", "Settings   "))
@@ -566,7 +579,12 @@ class Ui_MainWindow(object):
         self.label_6.setText(_translate("MainWindow", "Change the topic theme"))
         self.submitButton.setText(_translate("MainWindow", "Submit"))
         self.label.setText(_translate("MainWindow", "Set Root IP"))
+        self.label_5.setToolTip(_translate("MainWindow", "We love our users ♡"))
+        self.label_4.setToolTip(_translate("MainWindow", "We love our users ♡"))
         self.label_4.setText(_translate("MainWindow", "Decloud"))
+        self.minimizeButton.setToolTip(_translate("MainWindow", "Minimize window"))
+        self.restoreButton.setToolTip(_translate("MainWindow", "Restore window"))
+        self.closeButton.setToolTip(_translate("MainWindow", "Close window"))
 
 
 class Ui_AllClientStoragesDialog(object):
@@ -1213,7 +1231,6 @@ class Ui_CreateFolderDialog(object):
         self.label.setText(_translate("Dialog", "Decloud Create Folder"))
         self.label_3.setText(_translate("Dialog", "Name"))
 
-
 class Ui_AddNSDialog(object):
     class NameLineEdit(QLineEdit):
         from PyQt5.QtCore import pyqtSignal
@@ -1390,7 +1407,7 @@ class Ui_AddNSDialog(object):
 class Ui_InfoBlockDialog(object):
     def setupUi(self, Dialog):
         Dialog.setObjectName("Dialog")
-        Dialog.resize(985, 584)
+        Dialog.resize(985, 623)
         Dialog.setWindowTitle("Dialog")
         Dialog.setStyleSheet("* {\n"
                              "    border: none;\n"
@@ -1769,22 +1786,6 @@ class Ui_InfoBlockDialog(object):
         self.okButton.setIconSize(QtCore.QSize(24, 24))
         self.okButton.setObjectName("okButton")
         self.verticalLayout_2.addWidget(self.okButton)
-        self.cancelButton = QtWidgets.QPushButton(self.frame)
-        self.cancelButton.setMinimumSize(QtCore.QSize(0, 0))
-        self.cancelButton.setStyleSheet("QPushButton {\n"
-                                        "    border-radius:5px;\n"
-                                        "    padding: 1px;\n"
-                                        "}\n"
-                                        "QPushButton:hover {\n"
-                                        "    background-color: rgb(255, 38, 41);\n"
-                                        "}")
-        self.cancelButton.setText("")
-        icon1 = QtGui.QIcon()
-        icon1.addPixmap(QtGui.QPixmap(":/icons/icons/x.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
-        self.cancelButton.setIcon(icon1)
-        self.cancelButton.setIconSize(QtCore.QSize(24, 24))
-        self.cancelButton.setObjectName("cancelButton")
-        self.verticalLayout_2.addWidget(self.cancelButton)
         spacerItem = QtWidgets.QSpacerItem(20, 93, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
         self.verticalLayout_2.addItem(spacerItem)
         self.horizontalLayout_4.addWidget(self.frame, 0, QtCore.Qt.AlignRight)
@@ -1804,3 +1805,4 @@ class Ui_InfoBlockDialog(object):
         self.label_12.setText(_translate("Dialog", "Amount:"))
         self.label_4.setText(_translate("Dialog", "Hash block"))
 import resources_rc
+

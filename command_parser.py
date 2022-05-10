@@ -8,7 +8,6 @@ class CommandParser():
     def add_command(self, name:str):
         self._commands[name] = {}
 
-
     def add_argument(self, command, argument, default=None, type=None):
         self._commands[command][argument] = {'default': default, 'type': type}
 

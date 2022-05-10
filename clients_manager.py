@@ -12,7 +12,7 @@ import requests
 from dctp import ClientDCTP
 from fog_node import BaseFogNode, SIZE_REPLICA
 from flask import Flask, request, jsonify, Response, abort
-from utils import get_pools_host, LoadJsonFile, SaveJsonFile, get_path, is_ttl_file, get_random_host_pool
+from utils import LoadJsonFile, SaveJsonFile, get_path, is_ttl_file, get_random_pool_host, HostParams
 from wallet import Wallet
 
 TIME_TO_LIFE_FILE_IN_CLIENTS_REPLICAS =  60
@@ -105,7 +105,7 @@ class ClientStorageExplorer(BaseFogNode):
             return replica  # Формируем json из бинарных данных файла
 
         while True:
-            ip, port, port_cm, _ = get_random_host_pool()
+            ip, port, port_cm, _ = get_random_pool_host()
             try:
                 print(f'Load replica to pool {hash}')
                 response = requests.get(f'http://{ip}:{port}/load_replica/{hash}')
@@ -149,8 +149,9 @@ class ClientStorageExplorer(BaseFogNode):
         return None
 
 
-class DispatcherClientsManager(Process):
+class DispatcherClientsManager(HostParams, Process):
     def __init__(self, port):
+        HostParams.__init__(self)
         Process.__init__(self)
         self._port = port
         self._session_keys = {}
@@ -159,25 +160,38 @@ class DispatcherClientsManager(Process):
         self._garbage_collector = GarbageCollectorClientsManager()
         self._garbage_collector.start()
 
-        ip, port, port_cm, _ = get_random_host_pool()
+        hosts, port, port_cm, _ = get_random_pool_host()
 
-        client_pool = ClientDCTP(f'CM-{Wallet().address}', ip, port_cm)
-        client_pool.start()
+        self.client_pool = ClientDCTP(f'CM-{Wallet().address}', self.select_host(*hosts), port_cm, reconnect=True)
+        self.client_pool.start()
 
         app = Flask(__name__)
+        self.flask = app
 
         def get_address_normal(address):
             try:
-                return client_pool.request(id_client=address, method='check_valid_address')['address_normal']
+                return self.client_pool.request(id_client=address, method='check_valid_address')['address_normal']
             except:
                 pass
+
+        @app.route('/api/stop', methods=['GET'])
+        def stop():
+            self._garbage_collector.stop()
+            self.client_pool.stop()
+            while sum([thread.is_alive() for thread in (self._garbage_collector, self.client_pool)]) != 0:
+                time.sleep(0.1)
+
+            func = request.environ.get('werkzeug.server.shutdown')
+            if func:
+                func()
+            return jsonify()
 
         @app.route('/api/get_all_ns/<string:address>', methods=['GET'])
         def get_all_ns(address):
             if not address or not Wallet.check_valid_address(address):
                 return jsonify({'error': 'address is not valid'})
             try:
-                return jsonify(client_pool.request(id_client=address, method='get_all_ns')['all_ns'])
+                return jsonify(self.client_pool.request(id_client=address, method='get_all_ns')['all_ns'])
             except:
                 abort(404)
 
@@ -194,21 +208,22 @@ class DispatcherClientsManager(Process):
             if not data['address'] or not Wallet.check_valid_address(data['address']):
                 return jsonify({'error': 'address is not valid'})
             try:
-                return jsonify(client_pool.request(id_client=data['address'], method='registration_domain_name', json=data))
+                return jsonify(self.client_pool.request(id_client=data['address'],
+                                                        method='registration_domain_name', json=data))
             except:
                 abort(404)
 
         @app.route('/api/get_balance/<address>', methods=['GET'])
         def get_balance(address):
             try:
-                return jsonify(requests.get(f'http://{ip}:{port}/get_balance/{address}').json())
+                return jsonify(requests.get(f'http://{self.select_host(*hosts)}:{port}/get_balance/{address}').json())
             except:
                 abort(404)
 
         @app.route('/api/get_free_balance/<address>', methods=['GET'])
         def get_free_balance(address):
             try:
-                return jsonify(requests.get(f'http://{ip}:{port}/get_free_balance/{address}').json())
+                return jsonify(requests.get(f'http://{self.select_host(*hosts)}:{port}/get_free_balance/{address}').json())
             except:
                 abort(404)
 
@@ -216,7 +231,7 @@ class DispatcherClientsManager(Process):
         def new_transaction():
             data = request.json
             try:
-                return jsonify(client_pool.request(id_client=data['sender'], method='new_transaction', json=data))
+                return jsonify(self.client_pool.request(id_client=data['sender'], method='new_transaction', json=data))
             except:
                 abort(404)
 
@@ -246,12 +261,12 @@ class DispatcherClientsManager(Process):
                 if not chunk:
                     break
                 hashes.append(client._save_replica(chunk))
-                client_pool.request(id_client=data['address'], method='send_replica', data=chunk)
+                self.client_pool.request(id_client=data['address'], method='send_replica', data=chunk)
             chunk = bytes(json.dumps(['file', current_dir.hash, data['file_name'], hashes]), 'utf-8')
             hash_file = client._save_replica(chunk)
 
-            client_pool.request(id_client=data['address'], method='send_replica', data=chunk)
-            client_pool.request(id_client=data['address'], method='commit_replica', json={'data': hash_file})
+            self.client_pool.request(id_client=data['address'], method='send_replica', data=chunk)
+            self.client_pool.request(id_client=data['address'], method='commit_replica', json={'data': hash_file})
 
             current_dir.add_child(FileExplorer(data['file_name'], hash_file))
             client.save_state()
@@ -282,9 +297,9 @@ class DispatcherClientsManager(Process):
 
             hash_dir = client._save_replica(bytes(json.dumps(['dir', current_dir.hash, name]), 'utf-8'))
 
-            client_pool.request(id_client=data['address'], method='send_replica',
+            self.client_pool.request(id_client=data['address'], method='send_replica',
                                 data=bytes(json.dumps(['dir', current_dir.hash, name]), 'utf-8'))
-            client_pool.request(id_client=data['address'], method='commit_replica', json={'data': hash_dir})
+            self.client_pool.request(id_client=data['address'], method='commit_replica', json={'data': hash_dir})
 
             current_dir.add_child(DirectoryExplorer(name, hash_dir, current_dir))
             client.save_state()
@@ -339,7 +354,7 @@ class DispatcherClientsManager(Process):
                 else:
                     parent_hash = ''
                 try:
-                    response = client_pool.request(id_client=address_normal, method='get_occupied')
+                    response = self.client_pool.request(id_client=address_normal, method='get_occupied')
                 except:
                     return jsonify(404)
 
@@ -349,7 +364,7 @@ class DispatcherClientsManager(Process):
                 if not cur_obj == client.root_dir:
                     dct_files_and_directories['dirs'].append({'name': '..', 'id_object': cur_obj.parent.hash})
                 for child in cur_obj.get_children():
-                    response = client_pool.request(id_client=address_normal, method='get_info_object',
+                    response = self.client_pool.request(id_client=address_normal, method='get_info_object',
                                                    json={'id_object': child.hash})
                     dct_files_and_directories[{FileExplorer: 'files', DirectoryExplorer: 'dirs'}[type(child)]] += \
                         [{'name': child.name, 'id_object': child.hash, 'info': response['info']}]
@@ -358,13 +373,18 @@ class DispatcherClientsManager(Process):
         app.run(host='0.0.0.0', port=self._port)
 
 
+
 class GarbageCollectorClientsManager(Thread):
     def __init__(self):
         super().__init__()
+        self.stoping = False
+
+    def stop(self):
+        self.stoping = True
 
     def run(self):
         path = get_path('data/clients_manager/clients_replicas/')
-        while True:
+        while not self.stoping:
             for directory_path, directory_names, file_names in os.walk(path):
                 for file_name in file_names:
                     if file_name.find('.tmp') != -1 or file_name == 'state.json':

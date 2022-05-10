@@ -1,11 +1,11 @@
-import datetime
+from random import randrange, random
 import requests
 from _pysha3 import keccak_256 as sha3_256
 import os
-import time
+from time import sleep
 from threading import Thread
 from dctp import ClientDCTP
-from utils import get_pools_host, get_path, exists_path, get_size_file, SaveJsonFile, print_error
+from utils import get_path, exists_path, get_size_file, load_pools_host, save_pools_host, SyncTime
 from wallet import Wallet
 
 SIZE_REPLICA = 1024 ** 2
@@ -94,13 +94,11 @@ class BaseFogNode:
         return self._id_fog_node
 
 
-class FogNode(BaseFogNode, Thread):
+class FogNode(BaseFogNode, SyncTime, Thread):
     def __init__(self, process_client, private_key: str):
         BaseFogNode.__init__(self)
+        SyncTime.__init__(self)
         Thread.__init__(self)
-        self.pool_ip, self.pool_port = None, None
-        if not exists_path('data/fog_nodes/pools_host'):
-            SaveJsonFile('data/fog_nodes/pools_host', {})
         self._process_client = process_client
         self._main_dir_data = 'fog_nodes'
         self._pool_client = None
@@ -109,10 +107,18 @@ class FogNode(BaseFogNode, Thread):
         wallet = Wallet(private_key)
         self._id_fog_node = wallet.address
         self._wallet = wallet
+        self.stoping = False
 
     @property
     def wallet(self):
         return self._wallet
+
+    def stop(self):
+        self.stoping = True
+        if self._pool_client:
+            self._pool_client.stop()
+            while self._pool_client.is_alive():
+                sleep(0.1)
 
     def _create_random_init_replica(self):
         # Создаем 1 блок со случайными данными.
@@ -147,44 +153,62 @@ class FogNode(BaseFogNode, Thread):
 
     def _get_connect_address_pool(self):
         while True:
-            pools = get_pools_host('data/fog_nodes/pools_host')
-            active_pools = {}
-            for key, item in list(pools.items()):
+            pools = load_pools_host()
+            active_pools = []
+            max_fog_nodes = -1
+            current_fog_nodes = -1
+            if self._pool_client and self._address_pool_now_connect:
                 try:
-                    response = requests.get(f'http://{item[0]}:{item[1]}/get_active_pools').json()
-                    for key_response, item_response in response.items():
-                        active_pools[key_response] = item_response
-                        pools[key_response] = item_response
+                    current_fog_nodes = requests.get(
+                        f'http://{self.select_host(*pools[self._address_pool_now_connect][0])}:'
+                        f'{pools[self._address_pool_now_connect][1]}/get_active_count_fog_nodes', timeout=5).json()
                 except:
                     pass
-            if '' in pools.keys():
-                pools.pop('')
-            SaveJsonFile('data/fog_nodes/pools_host', pools)
+                max_fog_nodes = current_fog_nodes
 
-            for key, item in list(active_pools.items()):
+            for key in sorted(list(pools), key=lambda A: random()):
                 try:
-                    active_pools[key] = requests.get(f'http://{item[0]}:{item[1]}/get_active_count_fog_nodes').json()
+                    response = requests.get(f'http://{self.select_host(*pools[key][0])}:{pools[key][1]}/'
+                                            f'get_active_pools', timeout=5).json()
                 except:
-                    active_pools.pop(key)
+                    continue
 
-            count_fog_nodes = [(key, item) for key, item in active_pools.items()]
-            if count_fog_nodes:
-                count_fog_nodes.sort(key=lambda x: x[1])
-                if self._pool_client:
-                    if self._address_pool_now_connect in active_pools and \
-                            active_pools[self._address_pool_now_connect] == count_fog_nodes[0][1]:
-                        return
-                self._address_pool_now_connect = count_fog_nodes[0][0]
-                return pools[count_fog_nodes[0][0]]
+                for key_response, item_response in response.items():
+                    pools[key_response] = item_response
+                save_pools_host(pools)
 
-            print_error('Нет соединения с active pools')
-            time.sleep(2)
+                for key_response in sorted(list(response), key=lambda A: random()):
+                    if key_response not in active_pools:
+                        try:
+                            count_fog_nodes = requests.get(f'http://{self.select_host(*response[key_response][0])}:'
+                                                          f'{response[key_response][1]}/get_active_count_fog_nodes',
+                                                          timeout=5).json()
+                        except:
+                            continue
+                        active_pools.append(key_response)
+                        if max_fog_nodes == -1:
+                            max_fog_nodes = count_fog_nodes
+                            continue
+
+                        if max_fog_nodes > count_fog_nodes:
+                            self._address_pool_now_connect = key_response
+                            return pools[key_response]
+
+            if self.stoping:
+                return
+            elif max_fog_nodes == -1:
+                sleep(2)
+            elif max_fog_nodes != current_fog_nodes:
+                self._address_pool_now_connect = active_pools[-1]
+                return pools[active_pools[-1]]
+            else:
+                return
 
     def _connect_pool(self):
         new_pool_params = self._get_connect_address_pool()
         if new_pool_params:
-            self.pool_ip, self.pool_port, _, port_fn = new_pool_params
-            pool_client = ClientDCTP(self.wallet.address, self.pool_ip, port_fn)
+            hosts, _, _, port_fn = new_pool_params
+            pool_client = ClientDCTP(self.wallet.address, self.select_host(*hosts), port_fn)
 
             @pool_client.method('update_balance')
             def update_balance(json, data):
@@ -220,25 +244,33 @@ class FogNode(BaseFogNode, Thread):
         self._process_client.request(id_client=self._id_fog_node, method='current_state_fog_node',
                                      json={'state': 'connecting', 'id_fog_node': self._id_fog_node})
         self._connect_pool()
-        self._process_client.request(id_client=self._id_fog_node, method='current_state_fog_node',
-                                     json={'state': 'preparing', 'id_fog_node': self._id_fog_node})
-        self._preparing_replicas()
+        if not self.stoping:
+            self._process_client.request(id_client=self._id_fog_node, method='current_state_fog_node',
+                                         json={'state': 'preparing', 'id_fog_node': self._id_fog_node})
+            self._preparing_replicas()
 
-        if self._pool_client.is_alive():
-            self._process_client.request(id_client=self._id_fog_node, method='update_balance_fog_node',
-                                         json=self._pool_client.request('get_balance'))
-        self._process_client.request(id_client=self._id_fog_node, method='current_state_fog_node',
-                                     json={'state': 'work', 'id_fog_node': self._id_fog_node})
-        time.sleep(30)
+            try:
+                self._process_client.request(id_client=self._id_fog_node, method='update_balance_fog_node',
+                                             json=self._pool_client.request('get_balance'))
+                self._process_client.request(id_client=self._id_fog_node, method='current_state_fog_node',
+                                             json={'state': 'work', 'id_fog_node': self._id_fog_node})
+            except:
+                pass
+        self.sync_time()
         while True:
-            date = datetime.datetime.utcnow()
+            date = self.sync_utcnow()
+            for _ in range(60 + randrange(10)):
+                if self.stoping or not self._pool_client.is_alive():
+                    self._address_pool_now_connect = None
+                    break
+                else:
+                    sleep(1)
+
+            if self.stoping:
+                break
+
             if 10 < date.second < 50:
-                for _ in range(65):
-                    if self._pool_client.is_stoped():
-                        self._address_pool_now_connect = None
-                        break
-                    else:
-                        time.sleep(1)
                 self._connect_pool()
             else:
-                time.sleep(1)
+                sleep(1)
+

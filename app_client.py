@@ -1,13 +1,13 @@
-from PyQt5.QtWidgets import QMainWindow, QApplication, QFrame, QSystemTrayIcon, QMenu, QAction, QHeaderView
-import sys
+from PyQt5.QtWidgets import QMainWindow, QFrame, QSystemTrayIcon, QMenu, QAction, QHeaderView
 from interface import *
 from utils import SaveJsonFile, LoadJsonFile, get_path
+from  variables import POOL_ROOT_EXTERNAL_IP
 
 window_size = 0
 
 
 class AppClient(QMainWindow):
-    def __init__(self):
+    def __init__(self, port_pool, port_cm, port_fn):
         super().__init__()
 
         from utils import exists_path
@@ -15,21 +15,21 @@ class AppClient(QMainWindow):
         from PyQt5.QtGui import QIcon
         from PyQt5.QtCore import Qt
         from widgets import FogNodesWidget, PoolWidget, SearchClientStorage
+
+        self.port_pool = port_pool
+        self.port_cm = port_cm
+        self.port_fn = port_fn
+
         self.setWindowTitle("DeCloud")
         self.setWindowIcon(QIcon(get_path('icon.png')))
         # Init QSystemTrayIcon
         self.tray_icon = QSystemTrayIcon(self)
+        self.tray_icon.activated.connect(self.on_click_tray_icon)
         self.tray_icon.setIcon(QIcon(get_path('icon.png')))
-
-        show_action = QAction("Show", self)
-        quit_action = QAction("Exit", self)
-        hide_action = QAction("Hide", self)
-        #show_action.triggered.connect(self.show)
-        #hide_action.triggered.connect(self.hide)
-        #quit_action.triggered.connect(qApp.quit)
         tray_menu = QMenu()
-        tray_menu.addAction(show_action)
-        tray_menu.addAction(hide_action)
+        tray_menu.triggered.connect(self.show)
+        quit_action = QAction("Exit", self)
+        quit_action.triggered.connect(self.close)
         tray_menu.addAction(quit_action)
         self.tray_icon.setContextMenu(tray_menu)
         self.tray_icon.show()
@@ -43,7 +43,7 @@ class AppClient(QMainWindow):
         self.fogNodesWidget = FogNodesWidget(self)  # Widget Fog Nodes
         self.poolWidget = PoolWidget(self)  # Widget Pool
 
-        if exists_path('data/clients_manager/state_app'):
+        if exists_path('data/state_app'):
             # При надичии файла state_app загружаем предыдущее состояние приложения
             self.load_state_app()
         else:
@@ -55,7 +55,6 @@ class AppClient(QMainWindow):
             self.ui.tabWidget.addTab(tabSearch, 'New tab')
 
         # Добавление вкладки с кнопкой создания страницы поиска
-
         self.ui.tabWidget.addTab(QLabel(""), '')
         self.addTabButton = QToolButton()
         self.addTabButton.setStyleSheet(""" QToolButton {
@@ -84,10 +83,11 @@ class AppClient(QMainWindow):
         self.ui.settingsButton.clicked.connect(self.open_center_tools_menu)
         self.ui.closeCenterToolsButton.clicked.connect(self.close_center_tools_menu)
         self.ui.submitButton.clicked.connect(self.submit_settings)
+        self.ui.addFogNodeButton.clicked.connect(self.fogNodesWidget.create_node)
 
         self.ui.restoreButton.clicked.connect(self.restore_or_maximize_window)
         self.ui.minimizeButton.clicked.connect(self.showMinimized)
-        self.ui.closeButton.clicked.connect(self.close)
+        self.ui.closeButton.clicked.connect(self.hide)
 
         def moveWindow(e):
             if self.isMaximized() == False:
@@ -97,7 +97,10 @@ class AppClient(QMainWindow):
                 e.accept()
 
         self.ui.headerContainer.mouseMoveEvent = moveWindow
-        self.show()
+
+    def on_click_tray_icon(self, reason):
+        if reason == QSystemTrayIcon.Trigger:
+            self.show()
 
     def information(self):
         pass
@@ -134,11 +137,10 @@ class AppClient(QMainWindow):
                 self.ui.stackedWidget.setCurrentWidget(self.ui.pageSettings)
 
         if width == 0:
-            from variables import POOL_ROOT_IP, POOL_PORT, POOL_FN_PORT, POOL_CM_PORT
-            self.ui.poolPortlineEdit.setText(str(POOL_PORT))
-            self.ui.CMPortlineEdit.setText(str(POOL_CM_PORT))
-            self.ui.FNPortlineEdit.setText(str(POOL_FN_PORT))
-            self.ui.rootIPlineEdit.setText(str(POOL_ROOT_IP))
+            self.ui.poolPortlineEdit.setText(str(self.port_pool))
+            self.ui.CMPortlineEdit.setText(str(self.port_cm))
+            self.ui.FNPortlineEdit.setText(str(self.port_fn))
+            self.ui.rootIPlineEdit.setText(str(POOL_ROOT_EXTERNAL_IP))
             new_width = 250
             self.animation = QPropertyAnimation(self.ui.centerToolsContainer, b'minimumWidth')
             self.animation.setDuration(250)
@@ -186,10 +188,18 @@ class AppClient(QMainWindow):
         self.ui.tabWidget.setCurrentIndex(self.ui.tabWidget.count() - 2)
         if self.ui.tabWidget.count() == 1:
             self.new_window()
+        self.save_state_app()
 
     def closeEvent(self, event):
-        self.showMinimized()
-        event.ignore()
+        from variables import DNS_NAME, PORT_DISPATCHER_CLIENTS_MANAGER
+        import requests
+
+        self.hide()
+        self.fogNodesWidget.mfn.close()
+
+        self.poolWidget.stop()
+        requests.get(f'http://{DNS_NAME}:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/stop')
+        exit()
 
     def send_byteEx(self):
         from widgets import Send_ByteEx
@@ -231,7 +241,7 @@ class AppClient(QMainWindow):
         from widgets import SearchClientStorage
 
         new_data_state = []
-        for i in range(self.ui.tabWidget.count()):
+        for i in range(self.ui.tabWidget.count()-1):
             name_tab = self.ui.tabWidget.tabText(i)
             if name_tab == 'New tab':  # Если вкладка New tab, то сохраняем и текст из строки поиска
                 new_data_state.append(
@@ -239,7 +249,7 @@ class AppClient(QMainWindow):
             else:
                 # Иначе сохраняем просто имя вкладки
                 new_data_state.append(name_tab)
-        SaveJsonFile('data/clients_manager/state_app', {'list_tab': new_data_state})
+        SaveJsonFile('data/state_app', {'list_tab': new_data_state})
 
     def load_state_app(self):
         from wallet import Wallet
@@ -247,7 +257,7 @@ class AppClient(QMainWindow):
         from widgets import SearchClientStorage, ClientStorageWidget
         from variables import DNS_NAME, PORT_DISPATCHER_CLIENTS_MANAGER
 
-        last_state = LoadJsonFile('data/clients_manager/state_app').as_dict()  # Загружаем предыдущий state
+        last_state = LoadJsonFile('data/state_app').as_dict()  # Загружаем предыдущий state
         # И адреса client storages
         addresses_client = [Wallet(key).address for key in LoadJsonFile('data/clients_manager/key').as_list()]
         for name_tab in last_state['list_tab']:  # Восстанавливаем вкладки
@@ -300,6 +310,7 @@ class AppClient(QMainWindow):
             tabFogNodes.setLayout(self.fogNodesWidget)
             self.ui.tabWidget.insertTab(self.ui.tabWidget.count() - 1, tabFogNodes, "Fog Nodes")
             self.ui.tabWidget.setCurrentIndex(self.ui.tabWidget.count() - 2)
+            self.save_state_app()
 
     def new_window(self):
         from widgets import SearchClientStorage
@@ -311,6 +322,7 @@ class AppClient(QMainWindow):
 
         self.ui.tabWidget.insertTab(self.ui.tabWidget.count() - 1, tabSearch, 'New tab')
         self.ui.tabWidget.setCurrentIndex(self.ui.tabWidget.count() - 2)  # Открытие вкладки
+        self.save_state_app()
 
     # -------------- Обработчики сигналов ClientStorageWidget --------------
     def change_ns_client_storage(self, ns, normal_address):

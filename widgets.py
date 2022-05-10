@@ -2,24 +2,25 @@ import json
 import os
 import requests
 from datetime import datetime
-from PyQt5.QtWidgets import QVBoxLayout, QHBoxLayout, QDialog, QTableWidget, QLabel, QMainWindow, QWidget, \
-    QListWidgetItem, QLineEdit, QPushButton, QTableWidgetItem
-from PyQt5.QtCore import Qt, QSize
+from PyQt5.QtWidgets import QVBoxLayout, QHBoxLayout, QDialog, QTableWidget, QLabel, QTableWidgetItem
+from PyQt5.QtCore import Qt
 from utils import LoadJsonFile
+from threading import Thread
+from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtGui import QGuiApplication
+from PyQt5.QtWidgets import QAbstractItemView, QHeaderView, QFrame
+from variables import PORT_DISPATCHER_CLIENTS_MANAGER, DNS_NAME
+from time import sleep
 
 
 class ClientStoragesExplorer(QTableWidget):
     # Проводник client storage's, отображение файловой системы
-    from PyQt5.QtCore import pyqtSignal
     update_dir = pyqtSignal(dict)
     message = pyqtSignal(str)
 
     def __init__(self, name=''):
-        from threading import Thread
-        from PyQt5.QtGui import QGuiApplication
-        from PyQt5.QtWidgets import QAbstractItemView, QHeaderView, QFrame
-
         super().__init__()
+        self.update_data_thread = None
         self.clipboard = QGuiApplication.clipboard()  # Буфер обмена
 
         self._current_id_object = ''  # Текущий объект
@@ -173,9 +174,6 @@ class ClientStoragesExplorer(QTableWidget):
                            " }")
         self.itemDoubleClicked.connect(self.open_object)  # По двойному нажатию открываем объект
 
-        update_data_thread = Thread(target=self.update_data)  # Создание потока для обновления данный
-        update_data_thread.start()
-
     def get_path(self):
         # Отправляем путь к текущей директории
         return self._name + '/' + self._current_id_object
@@ -226,17 +224,24 @@ class ClientStoragesExplorer(QTableWidget):
             self._last_response_hash = ''
             self.message.emit('no connection')
             return
+
         try:
             response = response.json()  # объект типа директория приходит в формате json
             type_object = 'dir'
         except:
             type_object = 'file'  # Иначе это объект типа файл
 
+        if 'error' in response:
+            self._last_response_hash = ''
+            self.message.emit(response['error'])
+            self.update_data_thread = None
+            return
+
+        if not self.update_data_thread:
+            self.update_data_thread = Thread(target=self.update_data)  # Создание потока для обновления данный
+            self.update_data_thread.start()
+
         if type_object == 'dir':
-            if 'error' in response:
-                self._last_response_hash = ''
-                self.message.emit(response['error'])
-                return
             if sha3_256(bytes(json.dumps(response), 'utf-8')).hexdigest() == self._last_response_hash:
                 return  # Если хеш предыдущего запроса совпадает с текщим, то не меняем изображение экрана
             self._last_response_hash = sha3_256(bytes(json.dumps(response), 'utf-8')).hexdigest()  # Перезаписываем хеш
@@ -256,17 +261,13 @@ class ClientStoragesExplorer(QTableWidget):
             with open(file_name, 'wb') as f:
                 [f.write(chunk) for chunk in response.iter_content(SIZE_REPLICA)]
             os.startfile(file_name)  # Отрываем файл
-            if self.rowCount():
-                if self._current_id_object != self.item(self.currentRow(), 0).text():  # Если введенный хапрос это файл
-                    self._last_response_hash = ''
-                    self.message.emit('ok')
+            if self.rowCount() and self._current_id_object != self.item(self.currentRow(), 0).text():  # Если введенный хапрос это файл
+                self._last_response_hash = ''
+                self.message.emit('ok')
 
     def update_data(self):
-        from variables import PORT_DISPATCHER_CLIENTS_MANAGER, DNS_NAME
-        import time
-
         while True:
-            time.sleep(15)  # Каждые 15 секунд запрашиваем информацию об объекте
+            sleep(15)  # Каждые 15 секунд запрашиваем информацию об объекте
             try:
                 if self._name != '':
                     info_object = requests.get(
@@ -582,10 +583,14 @@ class ClientStorageWidget(QVBoxLayout):
 class PoolWidget(QVBoxLayout):
     def __init__(self, parent):
         super().__init__()
+        self.pool = None
         self._address_pool = None
         self.pool_balance = 0
         self._is_run = False  # Флаг на запущенл ли пул
         self.ui = parent.ui
+        self.port_pool = parent.port_pool
+        self.port_cm = parent.port_cm
+        self.port_fn = parent.port_fn
         self.initUI()
 
     def initUI(self):
@@ -597,7 +602,7 @@ class PoolWidget(QVBoxLayout):
         font = QFont()
         font.setPointSize(9)
         layout = QHBoxLayout()
-        self.label_1 = QLabel('All active Fog Node: ')
+        self.label_1 = QLabel('All active Fog Nodes: ')
         self.label_1.setFont(font)
         self.AllActiveFogNodesLabel = QLabel('0')
         self.AllActiveFogNodesLabel.setFont(font)
@@ -790,6 +795,18 @@ class PoolWidget(QVBoxLayout):
         if private_key:  # В файле всегда 1 ключ, если он есть, значит пул уже был создан, поэтому запускаем пул
             self.start_pool(private_key)
 
+    def stop(self):
+        from time import sleep
+        print(self.pool)
+        if self.pool:
+            try:
+                self.client_app.request(method='stop')
+            except:
+                pass
+            self.client_app.stop()
+            while self.client_app.is_alive():
+                sleep(0.1)
+
     def show_info_block(self):
         infoBlock = InfoBlockDialog(json.loads(self.infoBlockchain.item(self.infoBlockchain.currentRow(), 4).text()))
         infoBlock.exec_()
@@ -804,7 +821,7 @@ class PoolWidget(QVBoxLayout):
             datetime.fromtimestamp(data['date']).strftime('%Y-%m-%d %H:%M:%S')))
         self.infoBlockchain.setItem(0, 4, QTableWidgetItem(json.dumps(data)))
         if row > 100:
-            self.infoBlockchain.removeRow(row - 1)
+            self.infoBlockchain.removeRow(row)
 
     def is_run(self):
         return self._is_run
@@ -819,7 +836,8 @@ class PoolWidget(QVBoxLayout):
         from variables import DNS_IP, PORT_APP
 
         try:
-            self.pool = Pool(private_key=private_key, port_app=PORT_APP)
+            self.pool = Pool(private_key=private_key, port_pool=self.port_pool, port_cm=self.port_cm,
+                             port_fn=self.port_fn, port_app=PORT_APP)
             self.pool.start()
         except Exception as e:
             print(e)
@@ -827,7 +845,7 @@ class PoolWidget(QVBoxLayout):
         self._address_pool = Wallet(private_key).address
         self.addressPoolLabel.setText(self._address_pool)
         self._is_run = True
-        client_app = ClientDCTP(self._address_pool, DNS_IP, PORT_APP)
+        client_app = ClientDCTP(self._address_pool, DNS_IP, PORT_APP, reconnect=True)
 
         @client_app.method('update_app_pool')
         def update_app_pool(json, data):
@@ -836,6 +854,7 @@ class PoolWidget(QVBoxLayout):
             self.AllActivePoolsLabel.setText(str(json['active_pool']))
 
         client_app.start()
+        self.client_app = client_app
 
     def change_balance_pool(self, amount):
         from utils import amount_format
@@ -845,15 +864,11 @@ class PoolWidget(QVBoxLayout):
 
 
 class FogNodesWidget(QHBoxLayout):
-    from PyQt5.QtCore import pyqtSignal
-
     changeBalanceClientsStorage = pyqtSignal(str, int)  # Сигнал на изменение баланса клиента
     changeBalancePool = pyqtSignal(int)  # Сигнал на изменение баланса пула
 
     def __init__(self, parent):
         super().__init__()
-        from PyQt5.QtGui import QGuiApplication
-
         self.ui = parent.ui
         self.clipboard = QGuiApplication.clipboard()  # Буфер обмена
         self.initUI()
@@ -1048,12 +1063,9 @@ class FogNodesWidget(QHBoxLayout):
         self.fogNodesTableWidget.cellClicked.connect(self.current_item_change)  # Обработка на нажатие на ячейку
 
         self.mfn = ManagerFogNodes()
-        self.mfn.load_fog_nodes('data/fog_nodes/key')
+        self.mfn.load_fog_nodes()
         self.mfn.on_change_balance = self.on_change_balance
         self.mfn.on_change_state = self.on_change_state
-
-        # --------- Menu ---------
-        self.ui.addFogNodeButton.clicked.connect(self.create_node)
 
         self.addWidget(self.fogNodesTableWidget)
         self.addSpacing(10)
@@ -1094,12 +1106,8 @@ class FogNodesWidget(QHBoxLayout):
     def create_node(self):
         # Создаем новую node
         self.mfn.add_fog_node()
-        if not self._address_pool:
-            self.ui.createPoolButton.show()
-            self.ui.openPoolButton.hide()
-        else:
-            self.ui.createPoolButton.hide()
-            self.ui.openPoolButton.show()
+        self.ui.createPoolButton.setVisible(self._address_pool == '')
+        self.ui.openPoolButton.setVisible(self._address_pool != '')
         self.ui.openClientStorageButton.setVisible(True)
 
     def on_change_balance(self, data):

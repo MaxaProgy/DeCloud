@@ -1,13 +1,13 @@
-import datetime
+from datetime import datetime, timedelta
 import os
 import json
-import random
-import time
-from shutil import copyfile
+from shutil import copy2
+from time import sleep
 from _pysha3 import keccak_256 as sha3_256
-from variables import POOL_PORT, POOL_ROOT_IP, POOL_FN_PORT, POOL_CM_PORT
+from variables import POOL_ROOT_EXTERNAL_IP, POOL_ROOT_INTERNAL_IP, POOL_PORT, POOL_CM_PORT, POOL_FN_PORT
 from string import ascii_lowercase
 from random import choice
+import requests
 
 ERROR_VIEW = True
 INFO_VIEW = True
@@ -16,6 +16,67 @@ WARNING_VIEW = True
 _LETTERS = ascii_lowercase
 NAME_AMOUNT_FORMAT = ['bEx', 'KbEx', 'MbEx', 'GbEx', 'TbEx', 'PbEx', 'EbEx', 'ZbEx', 'YbEx']
 
+class HostParams():
+    def __init__(self):
+        super().__init__()
+        self._external_ip, self._internal_ip = self.get_my_hosts()
+
+    def get_my_hosts(self):
+        import socket
+        from time import sleep
+
+        while True:
+            try:
+                ext_ip = requests.get("http://ifconfig.me/ip").text
+
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect(("8.8.8.8", 1))
+                int_ip = s.getsockname()[0]
+                s.close()
+
+                return ext_ip, int_ip
+            except:
+                print("No connection")
+                sleep(1)
+
+    def select_host(self, external_ip, internal_ip):
+        if self._external_ip == external_ip:
+            return internal_ip
+        return external_ip
+
+
+class SyncTime(HostParams):
+    def __init__(self):
+        super().__init__()
+        self.delta = 0
+
+    def sync_time(self):
+        hosts = {}
+        for address, item in load_pools_host().items():
+            if self._external_ip != item[0][0] and item[0][0] not in hosts:
+                hosts[item[0][0]] = item[1]
+            elif self._internal_ip != item[0][1] and item[0][1] not in hosts:
+                hosts[item[0][1]] = item[1]
+
+        if hosts:
+            ip_list = list(hosts)
+            while True:
+                ip = choice(ip_list)
+                start_time = datetime.utcnow().timestamp()
+                try:
+                    time = requests.get(f'http://{ip}:{hosts[ip]}/get_time', timeout=0.5).json()
+                except:
+                    continue
+                end_time = datetime.utcnow().timestamp()
+                self.delta = time - (start_time + (end_time - start_time) / 2)
+                break
+
+    def sync_utcnow_timestamp(self):
+        return datetime.utcnow().timestamp() + self.delta
+
+    def sync_utcnow(self):
+        return datetime.utcnow() + timedelta(seconds=self.delta)
+
 
 def amount_format(amount):
     cut_format = 0
@@ -23,6 +84,7 @@ def amount_format(amount):
         amount /= 1024
         cut_format += 1
     return f'{round(amount, 2)} {NAME_AMOUNT_FORMAT[cut_format]}'
+
 
 def get_path(path: str) -> str:
     file = ''
@@ -42,6 +104,7 @@ def get_path(path: str) -> str:
                 f.write('')
     return path
 
+
 def exists_path(path: str) -> bool:
     return os.path.exists(os.path.join(os.path.abspath(os.curdir), *path.split('/')))
 
@@ -52,22 +115,28 @@ def get_size_file(path: str) -> int:
     return 0
 
 
-def get_pools_address():
-    return list(LoadJsonFile('data/pool/pools_host').as_dict().keys())
-
-
-def get_pools_host(path):
-    pools = LoadJsonFile(path).as_dict()
+def load_pools_host():
+    pools = LoadJsonFile('data/hosts').as_dict()
     if pools:
-        return LoadJsonFile(path).as_dict()
-    else:
-        return {"": (POOL_ROOT_IP, POOL_PORT, POOL_CM_PORT, POOL_FN_PORT)}
+        return pools
+    return {"": ((POOL_ROOT_EXTERNAL_IP, POOL_ROOT_INTERNAL_IP), POOL_PORT, POOL_CM_PORT, POOL_FN_PORT)}
 
 
-def append_pool_host(name, ip, port_pool, port_cm, port_fn):
-    pools = LoadJsonFile('data/pool/pools_host').as_dict()
-    pools[name] = (ip, port_pool, port_cm, port_fn)
-    SaveJsonFile('data/pool/pools_host', data=pools)
+def save_pools_host(pools):
+    if '' in pools.keys():
+        pools.pop('')
+    SaveJsonFile('data/hosts', pools)
+
+
+def get_random_pool_host():
+    pools = load_pools_host()
+    return pools[choice(list(pools.keys()))]
+
+
+def append_pool_host(name, hosts, port_pool, port_cm, port_fn):
+    pools = LoadJsonFile('data/hosts').as_dict()
+    pools[name] = (hosts, port_pool, port_cm, port_fn)
+    save_pools_host(pools)
 
 
 def print_error(*args):
@@ -98,11 +167,7 @@ def sorted_dict(data):
 
 
 def is_ttl_file(path, ttl):
-    return datetime.datetime.now().timestamp() - os.path.getatime(path) < ttl
-
-def get_random_host_pool():
-    pools = get_pools_host('data/pool/pools_host')
-    return pools[random.choice(list(pools.keys()))]
+    return datetime.now().timestamp() - os.path.getatime(path) < ttl
 
 
 class SaveJsonFile:
@@ -114,34 +179,13 @@ class SaveJsonFile:
         random_path = f'{path}_{rand_string}.tmp'
         with open(random_path, 'w') as f:
             f.write(json.dumps(data, sort_keys=sort_keys))
-        copyfile(random_path, path)
+        copy2(random_path, path)
         os.remove(random_path)
 
 
 class LoadJsonFile:
     # Загрузка из файлов
     def __init__(self, path: str):
-        """
-        if exists_path(path):
-            while True:
-                path_rebuild = get_path(path)
-                try:
-                    with open(path_rebuild, 'r') as f:
-                        self._data = json.loads(f.read())  # Выдает ошибку, если некорректный фалй
-                    break
-                except Exception as e:
-                    print(44444444444, e)
-                    # Если файл битый(при прощлой записи программа оборвалсь на записи файла),
-                    # то загружаем данные из прошлой версии tmp
-                    if exists_path(path + '.tmp'):
-                        copyfile(path_rebuild + '.tmp', path_rebuild)
-                        os.remove(path_rebuild + '.tmp')
-                    else:
-                        # Если прошлой версии tmp нет - выдаем ошибку
-                        raise Exception(f'File {path_rebuild} is damaged')
-        else:
-            self._data = None
-        """
         if exists_path(path):
             path_rebuild = get_path(path)
             flag_open_file = False
@@ -152,12 +196,12 @@ class LoadJsonFile:
                     flag_open_file = True
                     break
                 except:
-                    time.sleep(0.1)
+                    sleep(0.1)
             if not flag_open_file:
                 # Если файл битый(при прощлой записи программа оборвалсь на записи файла),
                 # то загружаем данные из прошлой версии tmp
                 if exists_path(path + '.tmp'):
-                    copyfile(path_rebuild + '.tmp', path_rebuild)
+                    copy2(path_rebuild + '.tmp', path_rebuild)
                     os.remove(path_rebuild + '.tmp')
                 else:
                     # Если прошлой версии tmp нет - выдаем ошибку
@@ -215,6 +259,6 @@ class DispatcherSaveFiles:
         for path in self._tasks:
             path_rebuild = get_path(path)
             # В случае удачного сохранения в tmp - копируем tmp в основной
-            copyfile(path_rebuild, path_rebuild[:-4])
+            copy2(path_rebuild, path_rebuild[:-4])
             os.remove(path_rebuild)
         self._tasks = set()

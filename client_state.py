@@ -48,7 +48,11 @@ class ClientState:
         self._state_client['all_balance'] = amount
         self._save_state()
         if self._address in self._server_fn.get_workers():
-            self._server_fn.request(self._address, 'update_balance', {'amount': self._state_client['all_balance']})
+            try:
+                self._server_fn.request(id_worker=self._address, method='update_balance',
+                                        json={'amount': self._state_client['all_balance']})
+            except:
+                pass
 
     @property
     def occupied_balance(self):

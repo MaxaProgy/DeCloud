@@ -1,4 +1,3 @@
-import datetime
 import time
 from argparse import ArgumentParser
 from threading import Thread
@@ -8,12 +7,10 @@ from flask import Flask, jsonify, request, abort, Response
 from blockchain import Blockchain
 from dctp import ServerDCTP, send_status_code
 from fog_nodes_manager import ManagerFogNodes
-from utils import exists_path, get_path, append_pool_host, LoadJsonFile, get_pools_host, SaveJsonFile
-from variables import POOL_PORT, POOL_CM_PORT, POOL_FN_PORT, PORT_APP
+from utils import exists_path, get_path, append_pool_host, LoadJsonFile, SaveJsonFile, load_pools_host
+from variables import POOL_PORT, POOL_CM_PORT, POOL_FN_PORT
 from wallet import Wallet
-import requests
 import json as _json
-from random import choice
 
 
 class Pool(Process):
@@ -27,6 +24,7 @@ class Pool(Process):
         self._port_pool = port_pool
         self._active_pools = {}
         self._blockchain_thread = None
+        self.stoping = False
 
     @property
     def _blockchain(self):
@@ -34,25 +32,29 @@ class Pool(Process):
             time.sleep(0.1)
         return self._blockchain_thread
 
-    @staticmethod
-    def get_my_ip():
-        pools = get_pools_host('data/pool/pools_host')
-        while True:
-            try:
-                ip, port, _, _ = pools[choice(list(pools))]
-                return requests.get(f'http://{ip}:{port}/get_my_ip').json()
-            except:
-                time.sleep(1)
-                pass
-
     def run(self):
         if not Wallet.check_valid_address(self._wallet.address):
             raise Exception(f'Pool address {self._wallet.address} is not valid')
         if self._port_app:
             server_APP = ServerDCTP(self._port_app)
+
+            @server_APP.method('stop')
+            def stop(json, data):
+                self.server_CM.stop()
+                self.server_FN.stop()
+                self._blockchain_thread.stop()
+
+                while sum([thread.is_alive() for thread in
+                           (self.server_CM, self.server_FN, self._blockchain_thread)]) != 0:
+                    time.sleep(0.1)
+                self.stoping = True
+                exit = Thread(target=self.server_APP.stop)
+                exit.start()
+
             server_APP.start()
         else:
             server_APP = None
+        self.server_APP = server_APP
 
         server_CM = ServerDCTP(self._port_cm)
 
@@ -67,7 +69,7 @@ class Pool(Process):
                 return send_status_code(100, 'Required parameters are not specified: id_client, data')
 
             code, text = self._blockchain.new_transaction(sender=json['id_client'], data=json['data'],
-                                                          date=datetime.datetime.utcnow().timestamp(), is_cm=True)
+                                                          date=self._blockchain.sync_utcnow_timestamp(), is_cm=True)
             return send_status_code(code, text)
 
         @server_CM.method('new_transaction')
@@ -88,7 +90,7 @@ class Pool(Process):
 
             code, text = self._blockchain.new_transaction(sender=json['sender'], owner=json['owner'],
                                                           count=json['count'],
-                                                          date=datetime.datetime.utcnow().timestamp(), is_cm=True)
+                                                          date=self._blockchain.sync_utcnow_timestamp(), is_cm=True)
             return send_status_code(code, text)
 
         @server_CM.method('get_occupied')
@@ -114,7 +116,7 @@ class Pool(Process):
             hash_replica = sha3_256(bytes(_json.dumps(replica), 'utf-8')).hexdigest()
             SaveJsonFile(f'data/pool/waiting_replicas/{hash_replica}', replica)
             code, text = self._blockchain.new_transaction(sender=json['address'], data=hash_replica,
-                                                          date=datetime.datetime.utcnow().timestamp(), is_cm=True)
+                                                          date=self._blockchain.sync_utcnow_timestamp(), is_cm=True)
             return send_status_code(code, text)
 
         @server_CM.method('check_valid_address')
@@ -122,6 +124,7 @@ class Pool(Process):
             return {'address_normal': self._blockchain._dns.find_address(json['id_client'])}
 
         server_CM.start()
+        self.server_CM = server_CM
 
         server_FN = ServerDCTP(self._port_fn)
 
@@ -146,46 +149,58 @@ class Pool(Process):
             return {'amount': self._blockchain.get_balance(json['id_client'])}
 
         server_FN.start()
+        self.server_FN = server_FN
 
         # tun Flask - обмен данными между пулами
-        flask_thread = Thread(target=self.run_flask, args=[server_FN])
-        flask_thread.start()
+        self.flask_thread = Thread(target=self.run_flask, args=[server_FN])
+        self.flask_thread.setDaemon(True)
+        self.flask_thread.start()
 
         # получаем ip нашего пула
-        self._ip_pool = self.get_my_ip()
-
-        self._blockchain_thread = Blockchain(server_FN, server_APP, self._wallet, self._ip_pool,
+        self._blockchain_thread = Blockchain(server_FN, server_APP, self._wallet,
                                              self._port_pool, self._port_cm, self._port_fn)
         self._blockchain_thread.start()
 
-
-
-        while True:
-            if not (flask_thread.is_alive() and server_FN.is_alive()
+        while not self.stoping:
+            if not (self.flask_thread and self.flask_thread.is_alive() and server_FN.is_alive()
                     and server_CM.is_alive() and self._blockchain_thread.is_alive()):
-                print(f'Error POOL {self._wallet.address} flask={flask_thread.is_alive()}, FN={server_FN.is_alive()}, '
-                      f'CM={server_CM.is_alive()}, blockchain={self._blockchain_thread.is_alive()}')
-                break
-            time.sleep(5)
+                try:
+                    print(f'Error POOL {self._wallet.address}')
+                    print(f'FN={server_FN.is_alive()}')
+                    print(f'CM={server_CM.is_alive()}')
+                    print(f'blockchain={self._blockchain_thread.is_alive()}')
+                    print(f'flask={self.flask_thread}')
+                    print(f'flask={self.flask_thread.is_alive()}')
+                except:
+                    pass
+            time.sleep(1)
 
     def run_flask(self, server_FN):
         app = Flask(__name__)
+
+        @app.route('/get_my_ip', methods=['GET'])
+        def get_my_ip():
+            return jsonify(request.remote_addr)
+
+        @app.route('/get_time', methods=['GET'])
+        def get_time():
+            return jsonify(self._blockchain.sync_utcnow_timestamp())
 
         @app.route('/get_active_pools_and_count_fog_nodes', methods=['GET'])
         def get_active_pools_and_count_fog_nodes():
             if self._blockchain.is_ready():
                 active_pools = self._blockchain.now_active_pools()
-                active_pools[self._wallet.address] = {'params': (self._ip_pool, self._port_pool,
-                                                                 self._port_cm, self._port_fn),
-                                                      'fog_nodes': self._blockchain.get_count_fog_nodes()}
+                active_pools[self._wallet.address] = {'params': self._blockchain.params(),
+                                                      'fog_nodes': len(self._blockchain.now_active_fog_nodes())}
                 return jsonify(active_pools)
-            return {}
+            abort(404)
 
         @app.route('/register_pool', methods=['POST'])
         def register_pool():
-            ip = request.remote_addr
-            address, port_pool, port_cm, port_fn = request.json
-            append_pool_host(address, ip, port_pool, port_cm, port_fn)
+            external_ip, internal_ip, address, port_pool, port_cm, port_fn = request.json
+            append_pool_host(address, (external_ip, internal_ip), port_pool, port_cm, port_fn)
+            self._blockchain._now_active_pools[address] = {'params': ((external_ip, internal_ip),
+                                                                      port_pool, port_cm, port_fn), 'fog_nodes': -1}
             return jsonify()
 
         @app.route('/get_active_pools', methods=['GET'])
@@ -207,24 +222,18 @@ class Pool(Process):
         def get_active_fog_nodes():
             return jsonify(server_FN.get_workers())
 
-        """
-        @app.route('/send_new_block', methods=['POST'])
-        def send_new_block():
-            self._blockchain.update_new_block(request.json)
-            return jsonify()
-        """
-
         @app.route('/get_block/<int:number_block>', methods=['GET'])
         def get_block(number_block):
             return jsonify(self._blockchain.get_block(number_block))
 
+        @app.route('/get_current_winner_pool', methods=['GET'])
+        def get_current_winner_pool():
+            return jsonify(self._blockchain.winner_address_pool)
+
         @app.route('/get_genesis_time', methods=['GET'])
         def get_genesis_time():
+            print(self._blockchain.get_genesis_time())
             return jsonify(self._blockchain.get_genesis_time())
-
-        @app.route('/get_my_ip', methods=['GET'])
-        def get_my_ip():
-            return jsonify(request.remote_addr)
 
         @app.route('/new_transaction', methods=['POST'])
         def new_transaction():
@@ -296,6 +305,7 @@ if __name__ == '__main__':
         private_key = LoadJsonFile('data/fog_nodes/key').as_list()[-1]
         SaveJsonFile('data/pool/key', private_key)
     else:
+        mfn.load_fog_nodes()
         private_key = LoadJsonFile('data/pool/key').as_string()
     pool = Pool(private_key=private_key, port_pool=args.port_pool, port_cm=args.port_cm, port_fn=args.port_fn)
     pool.start()

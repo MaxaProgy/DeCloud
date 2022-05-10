@@ -1,0 +1,14 @@
+version: "3"
+
+services:
+  pool:
+    container_name: pool
+    build: .
+    restart: always
+    ports:
+      - 9000:9000
+      - 9100:9100
+      - 9200:9200
+    volumes:
+      - ./data:/usr/src/app/data
+    network_mode: host
