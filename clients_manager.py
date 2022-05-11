@@ -149,42 +149,44 @@ class ClientStorageExplorer(BaseFogNode):
         return None
 
 
-class DispatcherClientsManager(HostParams, Process):
+class DispatcherClientsManager(HostParams, Thread):
     def __init__(self, port):
         HostParams.__init__(self)
         Process.__init__(self)
         self._port = port
         self._session_keys = {}
+        self._stoping = False
 
     def run(self):
         self._garbage_collector = GarbageCollectorClientsManager()
         self._garbage_collector.start()
 
-        hosts, port, port_cm, _ = get_random_pool_host()
+        self.hosts, self.port, port_cm, _ = get_random_pool_host()
 
-        self.client_pool = ClientDCTP(f'CM-{Wallet().address}', self.select_host(*hosts), port_cm, reconnect=True)
+        self.client_pool = ClientDCTP(f'CM-{Wallet().address}', self.select_host(*self.hosts), port_cm, reconnect=True)
         self.client_pool.start()
 
-        app = Flask(__name__)
-        self.flask = app
+        flask_thread = Thread(target=self.run_flask)
+        flask_thread.setDaemon(True)
+        flask_thread.start()
 
+        while not self._stoping:
+            time.sleep(1)
+
+    def stop(self):
+        self._garbage_collector.stop()
+        self.client_pool.stop()
+        while sum([thread.is_alive() for thread in (self._garbage_collector, self.client_pool)]) != 0:
+            time.sleep(0.1)
+        self._stoping = True
+
+    def run_flask(self):
+        app = Flask(__name__)
         def get_address_normal(address):
             try:
                 return self.client_pool.request(id_client=address, method='check_valid_address')['address_normal']
             except:
                 pass
-
-        @app.route('/api/stop', methods=['GET'])
-        def stop():
-            self._garbage_collector.stop()
-            self.client_pool.stop()
-            while sum([thread.is_alive() for thread in (self._garbage_collector, self.client_pool)]) != 0:
-                time.sleep(0.1)
-
-            func = request.environ.get('werkzeug.server.shutdown')
-            if func:
-                func()
-            return jsonify()
 
         @app.route('/api/get_all_ns/<string:address>', methods=['GET'])
         def get_all_ns(address):
@@ -216,14 +218,14 @@ class DispatcherClientsManager(HostParams, Process):
         @app.route('/api/get_balance/<address>', methods=['GET'])
         def get_balance(address):
             try:
-                return jsonify(requests.get(f'http://{self.select_host(*hosts)}:{port}/get_balance/{address}').json())
+                return jsonify(requests.get(f'http://{self.select_host(*self.hosts)}:{self.port}/get_balance/{address}').json())
             except:
                 abort(404)
 
         @app.route('/api/get_free_balance/<address>', methods=['GET'])
         def get_free_balance(address):
             try:
-                return jsonify(requests.get(f'http://{self.select_host(*hosts)}:{port}/get_free_balance/{address}').json())
+                return jsonify(requests.get(f'http://{self.select_host(*self.hosts)}:{self.port}/get_free_balance/{address}').json())
             except:
                 abort(404)
 
@@ -370,7 +372,7 @@ class DispatcherClientsManager(HostParams, Process):
                         [{'name': child.name, 'id_object': child.hash, 'info': response['info']}]
                 return jsonify({'json': dct_files_and_directories})
 
-        app.run(host='0.0.0.0', port=self._port)
+        app.run(host='127.0.0.1', port=self._port)
 
 
 

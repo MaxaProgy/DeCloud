@@ -1,3 +1,4 @@
+import multiprocessing
 import sys
 from argparse import ArgumentParser
 from variables import POOL_PORT, POOL_FN_PORT, POOL_CM_PORT
@@ -5,6 +6,7 @@ from register_domain_name import register_domain_name
 
 
 if __name__ == '__main__':
+    multiprocessing.freeze_support()
     register_domain_name()
 
     parser = ArgumentParser()
@@ -51,8 +53,6 @@ if __name__ == '__main__':
     else:
         from app_client import AppClient
         from PyQt5.QtWidgets import QApplication
-        from clients_manager import DispatcherClientsManager
-        from variables import PORT_DISPATCHER_CLIENTS_MANAGER
 
         try:
             import ctypes
@@ -60,11 +60,10 @@ if __name__ == '__main__':
         except:
             pass
         app = QApplication(sys.argv)
-        dispatcher = DispatcherClientsManager(PORT_DISPATCHER_CLIENTS_MANAGER)
-        dispatcher.start()
         client_manager = AppClient(args.port_pool, args.port_cm, args.port_fn)
         client_manager.show()
         sys.exit(app.exec_())
+
 
 # create_pool --port_pool 2323 --port_cm 2324 --port_fn 2325
 # decloud.py -c True

@@ -1,9 +1,9 @@
 from PyQt5.QtWidgets import QMainWindow, QFrame, QSystemTrayIcon, QMenu, QAction, QHeaderView
+from clients_manager import DispatcherClientsManager
 from interface import *
-from utils import SaveJsonFile, LoadJsonFile, get_path
-from  variables import POOL_ROOT_EXTERNAL_IP
-
-window_size = 0
+from utils import SaveJsonFile, LoadJsonFile
+from variables import POOL_ROOT_EXTERNAL_IP, PORT_DISPATCHER_CLIENTS_MANAGER
+import resources_rc
 
 
 class AppClient(QMainWindow):
@@ -16,16 +16,19 @@ class AppClient(QMainWindow):
         from PyQt5.QtCore import Qt
         from widgets import FogNodesWidget, PoolWidget, SearchClientStorage
 
+        self.dispatcher = DispatcherClientsManager(PORT_DISPATCHER_CLIENTS_MANAGER)
+        self.dispatcher.start()
+
         self.port_pool = port_pool
         self.port_cm = port_cm
         self.port_fn = port_fn
 
         self.setWindowTitle("DeCloud")
-        self.setWindowIcon(QIcon(get_path('icon.png')))
+        self.setWindowIcon(QIcon(':/images/icon.png'))
         # Init QSystemTrayIcon
-        self.tray_icon = QSystemTrayIcon(self)
+        self.tray_icon = QSystemTrayIcon()
         self.tray_icon.activated.connect(self.on_click_tray_icon)
-        self.tray_icon.setIcon(QIcon(get_path('icon.png')))
+        self.tray_icon.setIcon(QIcon(':/images/icon.png'))
         tray_menu = QMenu()
         tray_menu.triggered.connect(self.show)
         quit_action = QAction("Exit", self)
@@ -166,21 +169,20 @@ class AppClient(QMainWindow):
 
     def restore_or_maximize_window(self):
         from PyQt5.QtGui import QIcon
-        global window_size
-        if window_size == 0:
-            window_size = 1
-            self.showMaximized()
-            self.ui.restoreButton.setIcon(QIcon(u':/icons/icons/copy.svg'))
-        else:
-            window_size = 0
+        if self.isMaximized():
             self.showNormal()
             self.ui.restoreButton.setIcon(QIcon(u':/icons/icons/square.svg'))
-        self.poolWidget.infoBlockchain.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        self.poolWidget.infoBlockchain.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        self.poolWidget.infoBlockchain.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
-        self.poolWidget.infoBlockchain.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
-        self.poolWidget.infoBlockchain.hide()
-        self.poolWidget.infoBlockchain.show()
+        else:
+            self.showMaximized()
+            self.ui.restoreButton.setIcon(QIcon(u':/icons/icons/copy.svg'))
+
+        if self.ui.tabWidget.tabText(self.ui.tabWidget.currentIndex()) == 'Pool':
+            self.poolWidget.infoBlockchain.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+            self.poolWidget.infoBlockchain.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+            self.poolWidget.infoBlockchain.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+            self.poolWidget.infoBlockchain.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
+            self.poolWidget.infoBlockchain.hide()
+            self.poolWidget.infoBlockchain.show()
 
     def closeTab(self, ind):
         # Метод закрывает вкладку под номером ind
@@ -194,12 +196,15 @@ class AppClient(QMainWindow):
         from variables import DNS_NAME, PORT_DISPATCHER_CLIENTS_MANAGER
         import requests
 
-        self.hide()
-        self.fogNodesWidget.mfn.close()
-
-        self.poolWidget.stop()
-        requests.get(f'http://{DNS_NAME}:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/stop')
-        exit()
+        close = QtWidgets.QMessageBox.question(self, "QUIT", "Are you sure want to exit DeCloud?",
+                                               QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+        if close == QtWidgets.QMessageBox.Yes:
+            self.hide()
+            self.fogNodesWidget.mfn.close()
+            self.poolWidget.stop()
+            self.dispatcher.stop()
+            self.tray_icon.hide()
+            exit()
 
     def send_byteEx(self):
         from widgets import Send_ByteEx

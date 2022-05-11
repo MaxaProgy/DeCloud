@@ -479,6 +479,8 @@ class Blockchain(SyncTime, Thread):
                 self.sync_time()
             self.sync_blockchain()
             while self._server_fn.get_count_workers() == 0:
+                if self.stoping:
+                    return
                 time.sleep(1)
                 self._winner_address_pool = None
                 self.sync_blockchain()

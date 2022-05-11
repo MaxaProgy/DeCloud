@@ -162,6 +162,7 @@ class Pool(Process):
         self._blockchain_thread.start()
 
         while not self.stoping:
+            """
             if not (self.flask_thread and self.flask_thread.is_alive() and server_FN.is_alive()
                     and server_CM.is_alive() and self._blockchain_thread.is_alive()):
                 try:
@@ -173,6 +174,7 @@ class Pool(Process):
                     print(f'flask={self.flask_thread.is_alive()}')
                 except:
                     pass
+            """
             time.sleep(1)
 
     def run_flask(self, server_FN):

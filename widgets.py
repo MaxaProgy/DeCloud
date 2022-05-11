@@ -2,15 +2,14 @@ import json
 import os
 import requests
 from datetime import datetime
-from PyQt5.QtWidgets import QVBoxLayout, QHBoxLayout, QDialog, QTableWidget, QLabel, QTableWidgetItem
-from PyQt5.QtCore import Qt
+from time import sleep
 from utils import LoadJsonFile
 from threading import Thread
-from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QGuiApplication
-from PyQt5.QtWidgets import QAbstractItemView, QHeaderView, QFrame
+from PyQt5.QtWidgets import QAbstractItemView, QHeaderView, QFrame, QVBoxLayout, QHBoxLayout, QDialog, QTableWidget, \
+    QLabel, QTableWidgetItem
 from variables import PORT_DISPATCHER_CLIENTS_MANAGER, DNS_NAME
-from time import sleep
 
 
 class ClientStoragesExplorer(QTableWidget):
@@ -40,8 +39,8 @@ class ClientStoragesExplorer(QTableWidget):
         self.setColumnHidden(0, True)  # Id объекта, скрываем колонку
         self.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)  # Имя объекта, растягиваем ячейку
         self.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)  # Дата создания
-        self.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)  # Тип объекта: директория, фалй
-        self.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)  # Размер обекта в byteEx
+        self.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)  # Тип объекта: директория, файл
+        self.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)  # Размер объекта в byteEx
 
         self.setStyleSheet("* {\n"
                            "    background: transparent;\n"
@@ -797,7 +796,6 @@ class PoolWidget(QVBoxLayout):
 
     def stop(self):
         from time import sleep
-        print(self.pool)
         if self.pool:
             try:
                 self.client_app.request(method='stop')
@@ -1562,7 +1560,6 @@ class InfoBlockDialog(QDialog):
             i += 1
 
         self.ui.okButton.clicked.connect(self.accept)
-        self.ui.cancelButton.clicked.connect(self.reject)
 
         def moveWindow(e):
             if self.isMaximized() == False:

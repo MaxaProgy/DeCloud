@@ -1,6 +1,4 @@
 from PyQt5 import QtCore, QtGui, QtWidgets
-
-from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import QLineEdit
 from PyQt5.QtCore import Qt
 
@@ -1804,5 +1802,6 @@ class Ui_InfoBlockDialog(object):
         self.label_3.setText(_translate("Dialog", "№ block:"))
         self.label_12.setText(_translate("Dialog", "Amount:"))
         self.label_4.setText(_translate("Dialog", "Hash block"))
-import resources_rc
+
+
 

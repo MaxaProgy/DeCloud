@@ -1,6 +1,12 @@
-![Image alt](static/image_1_readme.jpg)
+![Image alt](static_readme/image_1_readme.jpg)
+___
+##### [Видео о DeCloud на YouTube][https://www.youtube.com/watch?v=fnR_V6eHojM&list=PLsdSRcrzEwaOpplGSrmqXscgpTgKfCKCN]
+___
+
 `Идеальная модель технологии хранения и распространения данных подразумевает соответствие следующим базовым критериям: соблюдение авторского права; приватность и децентрализация хранимых данных; масштабируемость; обеспечение доступа к данным в любой момент времени на любом устройстве. На нынешнем этапе развития Интернета существует множество технологий хранения информации: облако, торрент, социальные сети. Однако ни одна из них не соответствует в полной мере перечисленным критериям.`
-![Image alt](static/image_2_readme.jpg)
+
+![Image alt](static_readme/image_2_readme.jpg)
+
 ~~~~Целью моей работы является создание технологии, способной объединить все базовые критерии идеальной модели хранения и распространения данных.
 Проект решает следующие задачи:
 1. Децентрализация хранимых данных (создание пиринговой сети)
@@ -48,6 +54,47 @@ ByteEx
 - Экономическая модель в проекте основана на владении ByteEX. 
 - Эмиссия ByteEX ограничена общим объемом сети в DeCloud и распределена в интервале времени.
 
-![Image alt](static/image_4_readme.jpg)
+![Image alt](static_readme/image_4_readme.jpg)
 
-![Image alt](static/image_3_readme.jpg)
+![Image alt](static_readme/image_3_readme.jpg)
+
+_____
+#### Установка и запуск Pool на Unix-подобных (Linux) системах с помощью Docker
+
+1. `sudo apt-get update`
+2. `sudo apt install git -y`
+3. `sudo git clone https://github.com/MariaZyryanova72/DeCloud.git`
+4. `cd DeCloud`
+5. `sudo git checkout develop`
+6. `source install_docker.sh`
+   
+#### Установка и запуск приложения на Windows с помощью Python в виртуальном окружении
+0. Скачайте архив по ссылке и распакуйте его в нужной директории: 
+
+`https://github.com/MariaZyryanova72/DeCloud/archive/refs/heads/develop.zip`
+1. При необходимости зайти и установить python  https://www.python.org/downloads/release/python-379/
+2. Откройте cmd.exe (Меню Пуск -> Служебные -> Командная строка)
+3. Перейдите в ту папке, где хотите установить приложение 
+   
+   ` cd <путь к директории распакованного архива>`
+4. Установка виртуального окружения
+ 
+    `python -m venv venv`
+5. Запуск окружения
+    
+    `venv\Scripts\activate.bat`
+
+6. Устонавливаем необходимые библиотеки
+    `python -m pip install -r requirements.txt`
+
+7. Запускаем приложение
+
+   `python decloud.py`
+   
+#### Установка и запуск приложения на Windows с помощью установщика
+
+1. Скачайте по ссылке установщик и запустите его
+    [Установщик тут ;)](DeCloudSetup.exe)
+
+
+[https://www.youtube.com/watch?v=fnR_V6eHojM&list=PLsdSRcrzEwaOpplGSrmqXscgpTgKfCKCN]: https://www.youtube.com/watch?v=fnR_V6eHojM&list=PLsdSRcrzEwaOpplGSrmqXscgpTgKfCKCN
