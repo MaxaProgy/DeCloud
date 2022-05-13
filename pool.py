@@ -234,7 +234,6 @@ class Pool(Process):
 
         @app.route('/get_genesis_time', methods=['GET'])
         def get_genesis_time():
-            print(self._blockchain.get_genesis_time())
             return jsonify(self._blockchain.get_genesis_time())
 
         @app.route('/new_transaction', methods=['POST'])

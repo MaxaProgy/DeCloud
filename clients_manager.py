@@ -15,7 +15,7 @@ from flask import Flask, request, jsonify, Response, abort
 from utils import LoadJsonFile, SaveJsonFile, get_path, is_ttl_file, get_random_pool_host, HostParams
 from wallet import Wallet
 
-TIME_TO_LIFE_FILE_IN_CLIENTS_REPLICAS =  60
+TIME_TO_LIFE_FILE_IN_CLIENTS_REPLICAS =  60*60*24
 
 
 class FileExplorer:

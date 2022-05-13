@@ -4,6 +4,7 @@ from interface import *
 from utils import SaveJsonFile, LoadJsonFile
 from variables import POOL_ROOT_EXTERNAL_IP, PORT_DISPATCHER_CLIENTS_MANAGER
 import resources_rc
+from widgets import ClientStoragesExplorer, ClientStorageWidget
 
 
 class AppClient(QMainWindow):
@@ -87,6 +88,10 @@ class AppClient(QMainWindow):
         self.ui.closeCenterToolsButton.clicked.connect(self.close_center_tools_menu)
         self.ui.submitButton.clicked.connect(self.submit_settings)
         self.ui.addFogNodeButton.clicked.connect(self.fogNodesWidget.create_node)
+        self.ui.createFolderButton.clicked.connect(self.create_folder)
+        self.ui.sendFileButton.clicked.connect(self.send_file)
+        self.ui.addNSButton.clicked.connect(self.registration_domain_name)
+
 
         self.ui.restoreButton.clicked.connect(self.restore_or_maximize_window)
         self.ui.minimizeButton.clicked.connect(self.showMinimized)
@@ -100,6 +105,15 @@ class AppClient(QMainWindow):
                 e.accept()
 
         self.ui.headerContainer.mouseMoveEvent = moveWindow
+
+    def create_folder(self):
+        self.ui.tabWidget.currentWidget().findChild(ClientStorageWidget).create_folder()
+
+    def send_file(self):
+        self.ui.tabWidget.currentWidget().findChild(ClientStorageWidget).send_file()
+
+    def registration_domain_name(self):
+        self.ui.tabWidget.currentWidget().findChild(ClientStorageWidget).registration_domain_name()
 
     def on_click_tray_icon(self, reason):
         if reason == QSystemTrayIcon.Trigger:
@@ -185,6 +199,11 @@ class AppClient(QMainWindow):
             self.poolWidget.infoBlockchain.show()
 
     def closeTab(self, ind):
+        # Останавливаем поток обновления виджета ClientStoragesExplorer
+        object = self.ui.tabWidget.currentWidget().findChild(ClientStoragesExplorer)
+        if object:
+            object.stop()
+
         # Метод закрывает вкладку под номером ind
         self.ui.tabWidget.removeTab(ind)
         self.ui.tabWidget.setCurrentIndex(self.ui.tabWidget.count() - 2)
@@ -193,12 +212,12 @@ class AppClient(QMainWindow):
         self.save_state_app()
 
     def closeEvent(self, event):
-        from variables import DNS_NAME, PORT_DISPATCHER_CLIENTS_MANAGER
-        import requests
-
         close = QtWidgets.QMessageBox.question(self, "QUIT", "Are you sure want to exit DeCloud?",
                                                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
         if close == QtWidgets.QMessageBox.Yes:
+            for object in self.ui.tabWidget.findChildren(ClientStoragesExplorer):
+                object.stop() # Останавливаем поток обновления виджета ClientStoragesExplorer
+
             self.hide()
             self.fogNodesWidget.mfn.close()
             self.poolWidget.stop()

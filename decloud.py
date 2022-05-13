@@ -7,7 +7,7 @@ from register_domain_name import register_domain_name
 
 if __name__ == '__main__':
     multiprocessing.freeze_support()
-    register_domain_name()
+    #register_domain_name()
 
     parser = ArgumentParser()
 
@@ -64,6 +64,5 @@ if __name__ == '__main__':
         client_manager.show()
         sys.exit(app.exec_())
 
-
+# decloud.py --console
 # create_pool --port_pool 2323 --port_cm 2324 --port_fn 2325
-# decloud.py -c True

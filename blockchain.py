@@ -159,12 +159,16 @@ class Blockchain(SyncTime, Thread):
 
             for _, item in active_pools.items():
                 if data:
-                    self.send_replica_to_active_pools(data)
+                    with open(path_root, 'rb') as f:
+                        requests.post(f'http://{self.select_host(*item["params"][0])}:{item["params"][1]}'
+                                      f'/send_replica', data=f.read())
                     if data_file[0] == 'file':
-                        self.send_replica_to_active_pools(data_file[3][-1])
+                        with open(path, 'rb') as f:
+                            requests.post(f'http://{self.select_host(*item["params"][0])}:{item["params"][1]}'
+                                          f'/send_replica', data=f.read())
                 try:
                     requests.post(f'http://{self.select_host(*item["params"][0])}:{item["params"][1]}/new_transaction',
-                                  json=transaction, timeout=1)
+                                  json=transaction, timeout=5)
                 except:
                     pass
 
