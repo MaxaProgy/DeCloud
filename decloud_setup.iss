@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "DeCloud"
-#define MyAppVersion "1.0"
+#define MyAppVersion "1.0.1"
 #define MyAppExeName "decloud.exe"
 #define MyAppAssocName MyAppName + " File"
 #define MyAppAssocExt ".myp"
