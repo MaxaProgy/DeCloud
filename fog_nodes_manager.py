@@ -14,28 +14,28 @@ class WorkerProcess(Process):
         self.client = None
 
     def run(self):
-        self.client = ClientDCTP(self.process_name, '127.0.0.1', self._port)
+        self.client = ClientDCTP(self.process_name)
 
         @self.client.method('add_fog_node')
-        def add_fog_node(json, data):
-            self.fog_nodes[json['address']] = FogNode(self.client, json['private_key'])
-            self.fog_nodes[json['address']].start()
+        def add_fog_node(request):
+            self.fog_nodes[request.json['address']] = FogNode(self.client, request.json['private_key'])
+            self.fog_nodes[request.json['address']].start()
 
         @self.client.method('get_balance')
-        def get_balance(json, data):
-            return self.fog_nodes[json['address']].pool_client.request(method='get_balance')
+        def get_balance(request):
+            return self.fog_nodes[request.json['address']].pool_client.request(method='get_balance').json
 
         @self.client.method('stop')
-        def stop(json, data):
+        def stop(request):
             from time import sleep
 
             [self.fog_nodes[address].stop() for address in self.fog_nodes]
             while sum([self.fog_nodes[address].is_alive() for address in self.fog_nodes]) != 0:
                 sleep(0.1)
 
-            self.client.stop()
+            self.client.disconnect()
 
-        self.client.start()
+        self.client.connect('127.0.0.1', self._port)
 
 
 class ManagerFogNodes():
@@ -50,12 +50,12 @@ class ManagerFogNodes():
         self._server_fog_nodes = ServerDCTP()
 
         @self._server_fog_nodes.method('current_state_fog_node')
-        def current_state_fog_node(json, data):
-            self.on_change_state(json)
+        def current_state_fog_node(request):
+            self.on_change_state(request)
 
         @self._server_fog_nodes.method('update_balance_fog_node')
-        def update_balance_fog_node(json, data):
-            self.on_change_balance(json)
+        def update_balance_fog_node(request):
+            self.on_change_balance(request)
 
         self._server_fog_nodes.start()
 
@@ -65,10 +65,11 @@ class ManagerFogNodes():
             worker = WorkerProcess(process_name, self._server_fog_nodes.current_port)
             worker.start()
 
-    def on_change_state(self, data):
+
+    def on_change_state(self, request):
         pass
 
-    def on_change_balance(self, data):
+    def on_change_balance(self, request):
         pass
 
     def load_fog_nodes(self):
@@ -98,12 +99,12 @@ class ManagerFogNodes():
             if address in worker['process_clients']:
                 json['address'] = address
                 while True:
-                    try:
-                        if self._server_fog_nodes.request(id_worker=worker['process_name'],
-                                                          method=method, json=json)[0]['status'] == 0:
-                            break
-                    except:
-                        sleep(0.1)
+                    response = self._server_fog_nodes.request(id_worker=worker['process_name'],
+                                                      method=method, json=json)
+                    if response.status == 0:
+                        break
+                    sleep(1)
+
     def close(self):
         for worker in self.process_worker:
             try:

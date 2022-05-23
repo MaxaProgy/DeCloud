@@ -39,7 +39,7 @@ class Pool(Process):
             server_APP = ServerDCTP(self._port_app)
 
             @server_APP.method('stop')
-            def stop(json, data):
+            def stop(request):
                 self.server_CM.stop()
                 self.server_FN.stop()
                 self._blockchain_thread.stop()
@@ -59,69 +59,69 @@ class Pool(Process):
         server_CM = ServerDCTP(self._port_cm)
 
         @server_CM.method('send_replica')
-        def send_replica(json, data):
-            with open(get_path(f'data/pool/waiting_replicas/{sha3_256(data).hexdigest()}'), 'wb') as f:
-                f.write(data)
+        def send_replica(request):
+            with open(get_path(f'data/pool/waiting_replicas/{sha3_256(request.data).hexdigest()}'), 'wb') as f:
+                f.write(request.data)
 
         @server_CM.method('commit_replica')
-        def commit_replica(json, data):
-            if not all([key in json for key in ['id_client', 'data']]):
-                return send_status_code(100, 'Required parameters are not specified: id_client, data')
+        def commit_replica(request):
+            if not all([key in request.json for key in ['data']]):
+                return send_status_code(100, 'Required parameters are not specified: data')
 
-            code, text = self._blockchain.new_transaction(sender=json['id_client'], data=json['data'],
+            code, text = self._blockchain.new_transaction(sender=request.id_client, data=request.json['data'],
                                                           date=self._blockchain.sync_utcnow_timestamp(), is_cm=True)
             return send_status_code(code, text)
 
         @server_CM.method('new_transaction')
-        def new_transaction(json, data):
-            if not all([key in json for key in ['sender', 'owner', 'count']]):
+        def new_transaction(request):
+            if not all([key in request.json for key in ['sender', 'owner', 'count']]):
                 return send_status_code(100, 'Required parameters are not specified: sender, owner, count')
 
-            json['sender'] = json['sender'].lstrip().rstrip()
-            json['owner'] = json['owner'].lstrip().rstrip()
-            if json['sender'] == json['owner']:
+            request.json['sender'] = request.json['sender'].lstrip().rstrip()
+            request.json['owner'] = request.json['owner'].lstrip().rstrip()
+            if request.json['sender'] == request.json['owner']:
                 return send_status_code(100, 'Are you stupid? why send byteEx yourself.')
 
-            if type(json['count']) == int:
-                if json['count'] <= 0:
+            if type(request.json['count']) == int:
+                if request.json['count'] <= 0:
                     return send_status_code(100, 'Required parameter "count" must be greater than zero')
             else:
                 return send_status_code(100, 'Required parameter "count" must be a number')
 
-            code, text = self._blockchain.new_transaction(sender=json['sender'], owner=json['owner'],
-                                                          count=json['count'],
+            code, text = self._blockchain.new_transaction(sender=request.json['sender'], owner=request.json['owner'],
+                                                          count=request.json['count'],
                                                           date=self._blockchain.sync_utcnow_timestamp(), is_cm=True)
             return send_status_code(code, text)
 
         @server_CM.method('get_occupied')
-        def get_occupied(json, data):
-            return {'occupied': self._blockchain.get_occupied(json['id_client'])}
+        def get_occupied(request):
+            return {'occupied': self._blockchain.get_occupied(request.id_client)}
 
         @server_CM.method('get_info_object')
-        def get_info_object(json, data):
-            return {'info': self._blockchain.get_info_object(json['id_client'], json['id_object'])}
+        def get_info_object(request):
+            return {'info': self._blockchain.get_info_object(request.id_client, request.json['id_object'])}
 
         @server_CM.method('get_all_ns')
-        def get_all_ns(json, data):
-            return {'all_ns': self._blockchain._dns.get_all_ns(json['id_client'])}
+        def get_all_ns(request):
+            return {'all_ns': self._blockchain._dns.get_all_ns(request.id_client)}
 
         @server_CM.method('registration_domain_name')
-        def registration_domain_name(json, data):
-            if not all([key in json for key in ['address', 'name']]):
+        def registration_domain_name(request):
+            if not all([key in request.json for key in ['address', 'name']]):
                 return send_status_code(100, 'Required parameters are not specified: address, name')
-            if type(json['name']) != str or not json['name'].strip():
+            if type(request.json['name']) != str or not request.json['name'].strip():
                 return send_status_code(100, 'Parameter "name" is not valid')
 
-            replica = ['ns', json['name'], json['address']]
+            replica = ['ns', request.json['name'], request.id_client]
             hash_replica = sha3_256(bytes(_json.dumps(replica), 'utf-8')).hexdigest()
             SaveJsonFile(f'data/pool/waiting_replicas/{hash_replica}', replica)
-            code, text = self._blockchain.new_transaction(sender=json['address'], data=hash_replica,
+            code, text = self._blockchain.new_transaction(sender=request.id_client, data=hash_replica,
                                                           date=self._blockchain.sync_utcnow_timestamp(), is_cm=True)
             return send_status_code(code, text)
 
         @server_CM.method('check_valid_address')
-        def check_valid_address(json, data):
-            return {'address_normal': self._blockchain._dns.find_address(json['id_client'])}
+        def check_valid_address(request):
+            return {'address_normal': self._blockchain._dns.find_address(request.id_client)}
 
         server_CM.start()
         self.server_CM = server_CM
@@ -129,24 +129,24 @@ class Pool(Process):
         server_FN = ServerDCTP(self._port_fn)
 
         @server_FN.method('connect_valid_client')
-        def connect_valid_client(json):
-            return Wallet.check_valid_address(json['id_worker'])
+        def connect_valid_client(request):
+            return Wallet.check_valid_address(request.id_worker)
 
         @server_FN.method('on_connected')
-        def on_connected(json):
-            response = server_FN.request(id_worker=json['id_worker'], method='get_hash_replicas')
+        def on_connected(request):
+            response = server_FN.request(id_worker=request.id_worker, method='get_hash_replicas').json
             if all([key in response for key in ['hash_replicas', 'size_fog_node']]):
-                self._blockchain.add_fog_node(id_fog_node=json['id_worker'],
+                self._blockchain.add_fog_node(id_fog_node=request.id_worker,
                                               data={'hash_replicas': response['hash_replicas'],
                                                     'size_fog_node': response['size_fog_node']})
 
         @server_FN.method('on_disconnected')
-        def on_disconnected(json):
-            self._blockchain.del_fog_node(json['id_worker'])
+        def on_disconnected(request):
+            self._blockchain.del_fog_node(request.id_worker)
 
         @server_FN.method('get_balance')
-        def get_balance(json, data):
-            return {'amount': self._blockchain.get_balance(json['id_client'])}
+        def get_balance(request):
+            return {'amount': self._blockchain.get_balance(request.id_client)}
 
         server_FN.start()
         self.server_FN = server_FN
@@ -162,7 +162,7 @@ class Pool(Process):
         self._blockchain_thread.start()
 
         while not self.stoping:
-            """
+
             if not (self.flask_thread and self.flask_thread.is_alive() and server_FN.is_alive()
                     and server_CM.is_alive() and self._blockchain_thread.is_alive()):
                 try:
@@ -172,9 +172,10 @@ class Pool(Process):
                     print(f'blockchain={self._blockchain_thread.is_alive()}')
                     print(f'flask={self.flask_thread}')
                     print(f'flask={self.flask_thread.is_alive()}')
+                    print()
                 except:
                     pass
-            """
+
             time.sleep(1)
 
     def run_flask(self, server_FN):
@@ -267,11 +268,11 @@ class Pool(Process):
             for id_fog_node in self._blockchain.get_fog_nodes():
                 if self._blockchain.get_exist_replica_in_fog_node(id_fog_node, hash_replica):
                     response = self._blockchain.get_replica_in_fog_node(id_fog_node, hash_replica)
-                    if response[1] == b'' and \
+                    if response.data == b'' and \
                             self._blockchain.get_size_replica_in_fog_node(id_fog_node, hash_replica) is not None:
-                        return response[1]
-                    elif response[1] != b'':
-                        return response[1]
+                        return response.json
+                    elif response.data != b'':
+                        return response.json
             abort(404)
 
         @app.route('/get_balance/<address>', methods=['GET'])

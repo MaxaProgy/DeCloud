@@ -24,7 +24,7 @@ class AppClient(QMainWindow):
         self.port_cm = port_cm
         self.port_fn = port_fn
 
-        self.setWindowTitle("DeCloud")
+
         self.setWindowIcon(QIcon(':/images/icon.png'))
         # Init QSystemTrayIcon
         self.tray_icon = QSystemTrayIcon()
@@ -189,14 +189,6 @@ class AppClient(QMainWindow):
         else:
             self.showMaximized()
             self.ui.restoreButton.setIcon(QIcon(u':/icons/icons/copy.svg'))
-
-        if self.ui.tabWidget.tabText(self.ui.tabWidget.currentIndex()) == 'Pool':
-            self.poolWidget.infoBlockchain.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-            self.poolWidget.infoBlockchain.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-            self.poolWidget.infoBlockchain.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
-            self.poolWidget.infoBlockchain.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
-            self.poolWidget.infoBlockchain.hide()
-            self.poolWidget.infoBlockchain.show()
 
     def closeTab(self, ind):
         # Останавливаем поток обновления виджета ClientStoragesExplorer

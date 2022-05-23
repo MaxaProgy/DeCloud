@@ -161,22 +161,24 @@ class DispatcherClientsManager(HostParams, Thread):
         self._garbage_collector = GarbageCollectorClientsManager()
         self._garbage_collector.start()
 
-        self.hosts, self.port, port_cm, _ = get_random_pool_host()
-
-        self.client_pool = ClientDCTP(f'CM-{Wallet().address}', self.select_host(*self.hosts), port_cm, reconnect=True)
-        self.client_pool.start()
+        self.client_pool = ClientDCTP(f'CM-{Wallet().address}')
 
         flask_thread = Thread(target=self.run_flask)
         flask_thread.setDaemon(True)
         flask_thread.start()
 
-        while not self._stoping:
+        while True:
+            if not self.client_pool.is_connected():
+                self.hosts, self.port, port_cm, _ = get_random_pool_host()
+                if self._stoping:
+                    break
+                self.client_pool.connect(self.select_host(*self.hosts), port_cm)
             time.sleep(1)
 
     def stop(self):
         self._garbage_collector.stop()
-        self.client_pool.stop()
-        while sum([thread.is_alive() for thread in (self._garbage_collector, self.client_pool)]) != 0:
+        self.client_pool.disconnect()
+        while self._garbage_collector.is_alive() or self.client_pool.is_connected():
             time.sleep(0.1)
         self._stoping = True
 
@@ -184,7 +186,7 @@ class DispatcherClientsManager(HostParams, Thread):
         app = Flask(__name__)
         def get_address_normal(address):
             try:
-                return self.client_pool.request(id_client=address, method='check_valid_address')['address_normal']
+                return self.client_pool.request(id_client=address, method='check_valid_address').json['address_normal']
             except:
                 pass
 
@@ -193,7 +195,7 @@ class DispatcherClientsManager(HostParams, Thread):
             if not address or not Wallet.check_valid_address(address):
                 return jsonify({'error': 'address is not valid'})
             try:
-                return jsonify(self.client_pool.request(id_client=address, method='get_all_ns')['all_ns'])
+                return jsonify(self.client_pool.request(id_client=address, method='get_all_ns').json['all_ns'])
             except:
                 abort(404)
 
@@ -211,7 +213,7 @@ class DispatcherClientsManager(HostParams, Thread):
                 return jsonify({'error': 'address is not valid'})
             try:
                 return jsonify(self.client_pool.request(id_client=data['address'],
-                                                        method='registration_domain_name', json=data))
+                                                        method='registration_domain_name', json=data).json)
             except:
                 abort(404)
 
@@ -233,7 +235,8 @@ class DispatcherClientsManager(HostParams, Thread):
         def new_transaction():
             data = request.json
             try:
-                return jsonify(self.client_pool.request(id_client=data['sender'], method='new_transaction', json=data))
+                return jsonify(self.client_pool.request(id_client=data['sender'],
+                                                        method='new_transaction', json=data).json)
             except:
                 abort(404)
 
@@ -356,7 +359,7 @@ class DispatcherClientsManager(HostParams, Thread):
                 else:
                     parent_hash = ''
                 try:
-                    response = self.client_pool.request(id_client=address_normal, method='get_occupied')
+                    response = self.client_pool.request(id_client=address_normal, method='get_occupied').json
                 except:
                     return jsonify(404)
 
@@ -367,7 +370,7 @@ class DispatcherClientsManager(HostParams, Thread):
                     dct_files_and_directories['dirs'].append({'name': '..', 'id_object': cur_obj.parent.hash})
                 for child in cur_obj.get_children():
                     response = self.client_pool.request(id_client=address_normal, method='get_info_object',
-                                                   json={'id_object': child.hash})
+                                                   json={'id_object': child.hash}).json
                     dct_files_and_directories[{FileExplorer: 'files', DirectoryExplorer: 'dirs'}[type(child)]] += \
                         [{'name': child.name, 'id_object': child.hash, 'info': response['info']}]
                 return jsonify({'json': dct_files_and_directories})
@@ -403,8 +406,6 @@ class GarbageCollectorClientsManager(Thread):
                         except:
                             # Если папка не пустая, то срабатывает исключение и папка не удаляется
                             pass
-
-
                     time.sleep(0.1)
             time.sleep(1)
 

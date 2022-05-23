@@ -1,3 +1,4 @@
+import time
 from random import randrange, random
 import requests
 from _pysha3 import keccak_256 as sha3_256
@@ -116,8 +117,8 @@ class FogNode(BaseFogNode, SyncTime, Thread):
     def stop(self):
         self.stoping = True
         if self._pool_client:
-            self._pool_client.stop()
-            while self._pool_client.is_alive():
+            self._pool_client.disconnect()
+            while self._pool_client.is_connected():
                 sleep(0.1)
 
     def _create_random_init_replica(self):
@@ -208,59 +209,57 @@ class FogNode(BaseFogNode, SyncTime, Thread):
         new_pool_params = self._get_connect_address_pool()
         if new_pool_params:
             hosts, _, _, port_fn = new_pool_params
-            pool_client = ClientDCTP(self.wallet.address, self.select_host(*hosts), port_fn)
-
-            @pool_client.method('update_balance')
-            def update_balance(json, data):
-                self._process_client.request(id_client=self._id_fog_node, method='update_balance_fog_node',
-                                             json={'amount': json['amount'], 'id_fog_node': self._id_fog_node})
-
-            @pool_client.method('get_hash_replicas')
-            def get_hash_replicas(json, data):
-                return {'hash_replicas': self._all_hash_replicas, 'size_fog_node': self._real_size_fog_node}
-
-            @pool_client.method('save_replica')
-            def save_replica(json, data):
-                self._save_replica(data)
-
-            @pool_client.method('get_replica')
-            def get_replica(json, data):
-                return self._load_replica(json['hash'])
-
-            @pool_client.method('get_size')
-            def get_size(json, data):
-                path = f'data/{self._main_dir_data}/{self._id_fog_node}/' + \
-                       '/'.join([json['hash'][i:i + 2] for i in range(0, len(json['hash']), 2)])
-                if exists_path(path):
-                    return os.path.getsize(get_path(path))
-
-            pool_client.start()
-
-            if self._pool_client:
-                self._pool_client.stop()
-            self._pool_client = pool_client
+            self._pool_client.connect(self.select_host(*hosts), port_fn)
 
     def run(self):
+        self._pool_client = ClientDCTP(self.wallet.address)
+
+        @self._pool_client.method('update_balance')
+        def update_balance(request):
+            self._process_client.request(id_client=self._id_fog_node, method='update_balance_fog_node',
+                                         json={'amount': request.json['amount'], 'id_fog_node': self._id_fog_node})
+
+        @self._pool_client.method('get_hash_replicas')
+        def get_hash_replicas(request):
+            return {'hash_replicas': self._all_hash_replicas, 'size_fog_node': self._real_size_fog_node}
+
+        @self._pool_client.method('save_replica')
+        def save_replica(request):
+            self._save_replica(request.data)
+
+        @self._pool_client.method('get_replica')
+        def get_replica(request):
+            return self._load_replica(request.json['hash'])
+
+        @self._pool_client.method('get_size')
+        def get_size(request):
+            path = f'data/{self._main_dir_data}/{self._id_fog_node}/' + \
+                   '/'.join([request.json['hash'][i:i + 2] for i in range(0, len(request.json['hash']), 2)])
+            if exists_path(path):
+                return os.path.getsize(get_path(path))
+
         self._process_client.request(id_client=self._id_fog_node, method='current_state_fog_node',
-                                     json={'state': 'connecting', 'id_fog_node': self._id_fog_node})
+                                     json={'state': 'connecting'})
         self._connect_pool()
         if not self.stoping:
             self._process_client.request(id_client=self._id_fog_node, method='current_state_fog_node',
-                                         json={'state': 'preparing', 'id_fog_node': self._id_fog_node})
+                                         json={'state': 'preparing'})
             self._preparing_replicas()
-
+            time.sleep(2)
             try:
+                balance = self._pool_client.request('get_balance').json
                 self._process_client.request(id_client=self._id_fog_node, method='update_balance_fog_node',
-                                             json=self._pool_client.request('get_balance'))
-                self._process_client.request(id_client=self._id_fog_node, method='current_state_fog_node',
-                                             json={'state': 'work', 'id_fog_node': self._id_fog_node})
-            except:
-                pass
+                                             json=balance)
+            except Exception as e:
+                print(66666666666666677777777777, e)
+            self._process_client.request(id_client=self._id_fog_node, method='current_state_fog_node',
+                                         json={'state': 'work'})
+
         self.sync_time()
         while True:
             date = self.sync_utcnow()
             for _ in range(60 + randrange(10)):
-                if self.stoping or not self._pool_client.is_alive():
+                if self.stoping or not self._pool_client.is_connected():
                     self._address_pool_now_connect = None
                     break
                 else:

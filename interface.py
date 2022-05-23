@@ -1405,7 +1405,7 @@ class Ui_AddNSDialog(object):
 class Ui_InfoBlockDialog(object):
     def setupUi(self, Dialog):
         Dialog.setObjectName("Dialog")
-        Dialog.resize(985, 623)
+        Dialog.resize(1150, 650)
         Dialog.setWindowTitle("Dialog")
         Dialog.setStyleSheet("* {\n"
                              "    border: none;\n"
@@ -1755,7 +1755,6 @@ class Ui_InfoBlockDialog(object):
         self.gridLayout_2.setColumnStretch(3, 1)
         self.verticalLayout_3.addLayout(self.gridLayout_2)
         self.TransactionTableWidget = QtWidgets.QTableWidget(self.frame_4)
-        self.TransactionTableWidget.setStyleSheet("")
         self.TransactionTableWidget.setObjectName("TransactionTableWidget")
         self.TransactionTableWidget.setColumnCount(0)
         self.TransactionTableWidget.setRowCount(0)

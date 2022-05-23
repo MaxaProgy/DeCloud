@@ -4,7 +4,7 @@ import requests
 from datetime import datetime
 from time import sleep
 from utils import LoadJsonFile
-from threading import Thread
+from threading import Thread, RLock
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QGuiApplication
 from PyQt5.QtWidgets import QAbstractItemView, QHeaderView, QFrame, QVBoxLayout, QHBoxLayout, QDialog, QTableWidget, \
@@ -19,6 +19,7 @@ class ClientStoragesExplorer(QTableWidget):
 
     def __init__(self, name=''):
         super().__init__()
+        self.stoping = False
         self.update_data_thread = None
         self.clipboard = QGuiApplication.clipboard()  # Буфер обмена
 
@@ -187,6 +188,9 @@ class ClientStoragesExplorer(QTableWidget):
         # Изменяем текущую директорию
         self._current_id_object = current_id_object
 
+    def stop(self):
+        self.stoping = True
+
     def change_name(self, name):
         # Смена текщего имени storage
         self._name = name
@@ -264,9 +268,10 @@ class ClientStoragesExplorer(QTableWidget):
                 self._last_response_hash = ''
                 self.message.emit('ok')
 
+
     def update_data(self):
-        while True:
-            sleep(15)  # Каждые 15 секунд запрашиваем информацию об объекте
+        sleep(15)
+        while not self.stoping:
             try:
                 if self._name != '':
                     info_object = requests.get(
@@ -277,6 +282,7 @@ class ClientStoragesExplorer(QTableWidget):
                         self.show_current_object()
             except:
                 self.message.emit('no connection')
+            sleep(15)  # Каждые 15 секунд запрашиваем информацию об объекте
 
     def copy_path(self):
         # Копирование а буфер обмена пути к файлу
@@ -366,10 +372,6 @@ class ClientStorageWidget(QVBoxLayout):
 
         self.addLayout(layout)
         self.addLayout(layout_balance)
-        # --------- Widgets button ---------
-        self.ui.createFolderButton.clicked.connect(self.create_folder)
-        self.ui.sendFileButton.clicked.connect(self.send_file)
-        self.ui.addNSButton.clicked.connect(self.registration_domain_name)
 
     @staticmethod
     def chunking(file_name):
@@ -585,7 +587,7 @@ class PoolWidget(QVBoxLayout):
         self.pool = None
         self._address_pool = None
         self.pool_balance = 0
-        self._is_run = False  # Флаг на запущенл ли пул
+        self._is_run = False  # Флаг запущен ли пул
         self.ui = parent.ui
         self.port_pool = parent.port_pool
         self.port_cm = parent.port_cm
@@ -625,11 +627,12 @@ class PoolWidget(QVBoxLayout):
         self.infoBlockchain.setShowGrid(False)  # Скрываем сетку в таблице
         self.infoBlockchain.setFrameStyle(QFrame.NoFrame)  # Скрываем рамку
 
-        self.infoBlockchain.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.infoBlockchain.setColumnWidth(0, self.infoBlockchain.width() // 6)
         self.infoBlockchain.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.infoBlockchain.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
-        self.infoBlockchain.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
+        self.infoBlockchain.setColumnWidth(3, self.infoBlockchain.width() / 4.5)
         self.infoBlockchain.setColumnHidden(4, True)
+
 
         self.infoBlockchain.setStyleSheet("* {\n"
                                           "    background: transparent;\n"
@@ -801,8 +804,8 @@ class PoolWidget(QVBoxLayout):
                 self.client_app.request(method='stop')
             except:
                 pass
-            self.client_app.stop()
-            while self.client_app.is_alive():
+            self.client_app.disconnect()
+            while self.client_app.is_connected():
                 sleep(0.1)
 
     def show_info_block(self):
@@ -813,6 +816,7 @@ class PoolWidget(QVBoxLayout):
         row = self.infoBlockchain.rowCount()
         self.infoBlockchain.insertRow(0)
         self.infoBlockchain.setItem(0, 0, QTableWidgetItem(str(data['number'])))
+        self.infoBlockchain.item(0, 0).setTextAlignment(Qt.AlignVCenter | Qt.AlignRight)
         self.infoBlockchain.setItem(0, 1, QTableWidgetItem(data['recipient_pool']))
         self.infoBlockchain.setItem(0, 2, QTableWidgetItem(data['recipient_fog_node']))
         self.infoBlockchain.setItem(0, 3, QTableWidgetItem(
@@ -823,9 +827,6 @@ class PoolWidget(QVBoxLayout):
 
     def is_run(self):
         return self._is_run
-
-    def update_active(self, data):
-        print(data)
 
     def start_pool(self, private_key):
         from pool import Pool
@@ -838,20 +839,20 @@ class PoolWidget(QVBoxLayout):
                              port_fn=self.port_fn, port_app=PORT_APP)
             self.pool.start()
         except Exception as e:
-            print(e)
+            print(23232323233, e)
             return
         self._address_pool = Wallet(private_key).address
         self.addressPoolLabel.setText(self._address_pool)
         self._is_run = True
-        client_app = ClientDCTP(self._address_pool, DNS_IP, PORT_APP, reconnect=True)
+        client_app = ClientDCTP(self._address_pool)
 
         @client_app.method('update_app_pool')
-        def update_app_pool(json, data):
-            self.add_new_block(json['block'])
-            self.AllActiveFogNodesLabel.setText(str(json['active_fog_nodes']))
-            self.AllActivePoolsLabel.setText(str(json['active_pool']))
+        def update_app_pool(request):
+            self.add_new_block(request.json['block'])
+            self.AllActiveFogNodesLabel.setText(str(request.json['active_fog_nodes']))
+            self.AllActivePoolsLabel.setText(str(request.json['active_pool']))
 
-        client_app.start()
+        client_app.connect(DNS_IP, PORT_APP)
         self.client_app = client_app
 
     def change_balance_pool(self, amount):
@@ -869,6 +870,7 @@ class FogNodesWidget(QHBoxLayout):
         super().__init__()
         self.ui = parent.ui
         self.clipboard = QGuiApplication.clipboard()  # Буфер обмена
+        self.lock_obj = RLock()
         self.initUI()
 
     def initUI(self):
@@ -883,19 +885,18 @@ class FogNodesWidget(QHBoxLayout):
         # --------- Foge Nodes ---------
         labels = ['Name', 'State', 'Amount', 'Full amount', 'Normal Address']  # Заголовки таблицы
         self.fogNodesTableWidget = QTableWidget()
-        self.fogNodesTableWidget.setColumnCount(
-            len(labels))  # # Устанавливаем количество колонок по количеству заголовков
+        self.fogNodesTableWidget.setColumnCount(len(labels))  # Устанавливаем количество колонок
         self.fogNodesTableWidget.setHorizontalHeaderLabels(labels)  # Устанавливаем заголовки
         self.fogNodesTableWidget.verticalHeader().hide()  # Скрываем нумерацию рядов
         self.fogNodesTableWidget.setEditTriggers(QAbstractItemView.NoEditTriggers)  # Запрет редактирования
         self.fogNodesTableWidget.setShowGrid(False)  # Скрываем сетку в таблице
         self.fogNodesTableWidget.setFrameStyle(QFrame.NoFrame)  # Скрываем рамку
-
         self.fogNodesTableWidget.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.fogNodesTableWidget.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-
+        self.fogNodesTableWidget.setColumnWidth(1, self.fogNodesTableWidget.width() // 6)
+        self.fogNodesTableWidget.setColumnWidth(2, self.fogNodesTableWidget.width() // 5)
         self.fogNodesTableWidget.setColumnHidden(3, True)  # Скрываем 3 ячейку - баланс в байтах
         self.fogNodesTableWidget.setColumnHidden(4, True)  # Скрываем 4 ячейку - адрес
+
         self.fogNodesTableWidget.setStyleSheet("* {\n"
                                                "    background: transparent;\n"
                                                "    color: rgb(210, 210, 210);\n"
@@ -1108,53 +1109,50 @@ class FogNodesWidget(QHBoxLayout):
         self.ui.openPoolButton.setVisible(self._address_pool != '')
         self.ui.openClientStorageButton.setVisible(True)
 
-    def on_change_balance(self, data):
+    def on_change_balance(self, request):
         from PyQt5.QtCore import Qt
         from utils import amount_format
         from PyQt5.QtWidgets import QTableWidgetItem
 
-        for i in range(self.fogNodesTableWidget.rowCount()):
-            if self.fogNodesTableWidget.item(i, 4).text() == data['id_fog_node']:
-                # Изменяем баланс нады, чей адрес совпадает с отправленным
-                self.fogNodesTableWidget.setItem(i, 2, QTableWidgetItem(amount_format(data['amount'])))  # Новый баланс
-                self.fogNodesTableWidget.setItem(i, 3, QTableWidgetItem(str(data['amount'])))  # Новый баланс в байтах
-                self.fogNodesTableWidget.item(i, 2).setTextAlignment(Qt.AlignRight)
-                if self.fogNodesTableWidget.item(i, 4).text() == self._address_pool:
-                    # Если нода является пулом, то меняем и баланс пула
-                    self.changeBalancePool.emit(data['amount'])
-                self.changeBalanceClientsStorage.emit(self.fogNodesTableWidget.item(i, 0).text(), data['amount'])
-                self.fogNodesTableWidget.hide()
-                self.fogNodesTableWidget.show()
-                return
+        with self.lock_obj:
+            for i in range(self.fogNodesTableWidget.rowCount()):
+                if self.fogNodesTableWidget.item(i, 4).text() == request.id_client:
+                    # Изменяем баланс нады, чей адрес совпадает с отправленным
+                    self.fogNodesTableWidget.setItem(i, 2, QTableWidgetItem(amount_format(request.json['amount'])))  # Новый баланс
+                    self.fogNodesTableWidget.setItem(i, 3, QTableWidgetItem(str(request.json['amount'])))  # Новый баланс в байтах
+                    self.fogNodesTableWidget.item(i, 2).setTextAlignment(Qt.AlignVCenter | Qt.AlignRight)
+                    if self.fogNodesTableWidget.item(i, 4).text() == self._address_pool:
+                        # Если нода является пулом, то меняем и баланс пула
+                        self.changeBalancePool.emit(request.json['amount'])
+                    self.changeBalanceClientsStorage.emit(self.fogNodesTableWidget.item(i, 0).text(), request.json['amount'])
+                    self.fogNodesTableWidget.repaint()
+                    return
 
-    def on_change_state(self, data):
+    def on_change_state(self, request):
         # Изменение состояния fog node
         from PyQt5.QtGui import QColor
         from variables import BACKGROUND_COLOR
         from PyQt5.QtWidgets import QTableWidgetItem
 
-        no_exist_node = True  # Флаг на существование ноды в таблийе
-        for i in range(self.fogNodesTableWidget.rowCount()):
-            if self.fogNodesTableWidget.item(i, 4).text() == data['id_fog_node']:
-                self.fogNodesTableWidget.setItem(i, 1, QTableWidgetItem(data['state']))
-                self.fogNodesTableWidget.hide()  # Для отрисовки таблицы
-                self.fogNodesTableWidget.show()
-                no_exist_node = False
-                break
-
-        if no_exist_node:  # Состояние пришла первый раз, создаем ряд
-            row = self.fogNodesTableWidget.rowCount()
-            self.fogNodesTableWidget.setRowCount(row + 1)
-            # Добавляем новый ряд в таблицу без сортировки, чтобы другие ряды не сбились
-            self.fogNodesTableWidget.setSortingEnabled(False)
-            self.fogNodesTableWidget.setItem(row, 0, QTableWidgetItem(data['id_fog_node']))
-            self.fogNodesTableWidget.item(row, 0).setBackground(QColor(BACKGROUND_COLOR))
-            self.fogNodesTableWidget.setItem(row, 4, QTableWidgetItem(data['id_fog_node']))
-            self.fogNodesTableWidget.setItem(row, 1, QTableWidgetItem(data['state']))
-            self.fogNodesTableWidget.setItem(row, 3, QTableWidgetItem('0'))
-            self.fogNodesTableWidget.setCurrentCell(row, 0)
-            self.fogNodesTableWidget.setSortingEnabled(True)
-        print(f'Node {data["id_fog_node"]} {data["state"]}')
+        with self.lock_obj:
+            for i in range(self.fogNodesTableWidget.rowCount()):
+                if self.fogNodesTableWidget.item(i, 4).text() == request.id_client:
+                    self.fogNodesTableWidget.setItem(i, 1, QTableWidgetItem(request.json['state']))
+                    self.fogNodesTableWidget.repaint()
+                    break
+            else:  # Состояние пришло первый раз, создаем запись
+                row = self.fogNodesTableWidget.rowCount()
+                self.fogNodesTableWidget.setRowCount(row + 1)
+                # Добавляем новую запись в таблицу без сортировки, чтобы другие ряды не сбились
+                self.fogNodesTableWidget.setSortingEnabled(False)
+                self.fogNodesTableWidget.setItem(row, 0, QTableWidgetItem(request.id_client))
+                self.fogNodesTableWidget.item(row, 0).setBackground(QColor(BACKGROUND_COLOR))
+                self.fogNodesTableWidget.setItem(row, 4, QTableWidgetItem(request.id_client))
+                self.fogNodesTableWidget.setItem(row, 1, QTableWidgetItem(request.json['state']))
+                self.fogNodesTableWidget.setItem(row, 3, QTableWidgetItem('0'))
+                self.fogNodesTableWidget.setCurrentCell(row, 0)
+                self.fogNodesTableWidget.setSortingEnabled(True)
+            print(f'Node {request.id_client} {request.json["state"]}')
 
     def _context_menu_open(self, position):
         from PyQt5.QtWidgets import QAction, QMenu
@@ -1520,6 +1518,7 @@ class InfoBlockDialog(QDialog):
         self.setWindowFlags(Qt.CustomizeWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
 
+
         self.ui = Ui_InfoBlockDialog()
         self.ui.setupUi(self)
 
@@ -1531,7 +1530,7 @@ class InfoBlockDialog(QDialog):
         self.ui.RecipientFogNodeAmountsLabel.setText(amount_format(data['amount_fog_node']))
         self.ui.RecipientPoolAmountLabel.setText(amount_format(data['amount_pool']))
 
-        labels = ['Sender', 'Owner', 'Count ByteEx', 'Data', 'Date']  # Заголовки таблицы
+        labels = ['Sender', 'Owner', 'ByteEx', 'Data', 'Date']  # Заголовки таблицы
         self.ui.TransactionTableWidget.setColumnCount(
             len(labels))  # Устанавливаем количество колонок по количеству заголовков
         self.ui.TransactionTableWidget.setHorizontalHeaderLabels(labels)  # Устанавливаем заголовки
@@ -1540,14 +1539,13 @@ class InfoBlockDialog(QDialog):
         self.ui.TransactionTableWidget.setShowGrid(False)  # Скрываем сетку в таблице
         self.ui.TransactionTableWidget.setFrameStyle(QFrame.NoFrame)  # Скрываем рамку
 
-        self.ui.TransactionTableWidget.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        self.ui.TransactionTableWidget.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.ui.TransactionTableWidget.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.ui.TransactionTableWidget.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.ui.TransactionTableWidget.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        self.ui.TransactionTableWidget.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        self.ui.TransactionTableWidget.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        self.ui.TransactionTableWidget.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
+        self.ui.TransactionTableWidget.setColumnWidth(4, self.ui.TransactionTableWidget.width())
         self.ui.TransactionTableWidget.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.ui.TransactionTableWidget.setSelectionMode(QAbstractItemView.SingleSelection)
-
         self.ui.TransactionTableWidget.setRowCount(len(data['transactions']))
         i = 0
         for item in data['transactions']:
@@ -1558,7 +1556,7 @@ class InfoBlockDialog(QDialog):
             self.ui.TransactionTableWidget.setItem(i, 4, QTableWidgetItem(
                 datetime.fromtimestamp(item['date']).strftime('%Y-%m-%d %H:%M:%S')))
             i += 1
-
+        self.ui.TransactionTableWidget.setCurrentCell(0, 0)
         self.ui.okButton.clicked.connect(self.accept)
 
         def moveWindow(e):

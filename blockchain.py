@@ -197,7 +197,7 @@ class Blockchain(SyncTime, Thread):
         return self._server_fn.request(id_worker=id_fog_node, method='get_replica', json={'hash': hash})
 
     def get_size_replica_in_fog_node(self, id_fog_node, hash):
-        return self._server_fn.request(id_worker=id_fog_node, method='get_size', json={'hash': hash})
+        return self._server_fn.request(id_worker=id_fog_node, method='get_size', json={'hash': hash}).json
 
     def _get_pools_host_pop_me(self):
         all_pools = load_pools_host()
@@ -360,6 +360,8 @@ class Blockchain(SyncTime, Thread):
             re_sync = False
             blocks = []
             while not re_sync and self._now_block_number <= current_number_block:
+                if self.stoping:
+                    return
                 for address in sorted(list(active_pools), key=lambda A: random.random()):
                     if self._winner_address_pool and current_number_block == sync_number_block and \
                             random.randint(0, count_active_pools) <= int(sqrt(count_active_pools)):
@@ -501,14 +503,17 @@ class Blockchain(SyncTime, Thread):
                 time.sleep(0.1)
 
             self._winner_address_pool = None
-            self._now_active_fog_nodes = self.get_fog_nodes()
-            for address in self._now_active_pools:
-                self._now_active_pools[address]['fog_nodes'] = -1
-            time.sleep(5)
+            ready = True
 
             while True:
+                self._now_active_fog_nodes = self.get_fog_nodes()
+                for address in self._now_active_pools:
+                    self._now_active_pools[address]['fog_nodes'] = -1
+                if ready:
+                    time.sleep(5)
                 if self.stoping:
                     return
+
                 self._update_active_pools()
                 all_active_pools = self.all_active_pools()
                 active_pools_with_fog_nodes = [key for key, item in all_active_pools.items() if
@@ -521,9 +526,7 @@ class Blockchain(SyncTime, Thread):
 
                 if active_pools_with_fog_nodes and (count_ip_active_pools > 1 or \
                         (count_ip_active_pools == 1 and ip_active_pools[0] == POOL_ROOT_EXTERNAL_IP)):
-                    if not self._ready:
-                        self._winner_address_pool = None
-                        self._ready = True
+                    if not ready:
                         break
                     # находим пул, который будет запечатывать блок у которого хэш последнего блока ближе
                     # к хэшу активного пула
@@ -570,8 +573,8 @@ class Blockchain(SyncTime, Thread):
                         self._now_block_number += 1
                     break
                 else:
-                    self._ready = False
                     time.sleep(1)
+                    ready = False
                     print_info('Нет соединения')
 
     def _save_block(self, block):
