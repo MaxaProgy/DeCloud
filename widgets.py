@@ -812,18 +812,15 @@ class PoolWidget(QVBoxLayout):
         infoBlock = InfoBlockDialog(json.loads(self.infoBlockchain.item(self.infoBlockchain.currentRow(), 4).text()))
         infoBlock.exec_()
 
-    def add_new_block(self, data):
-        row = self.infoBlockchain.rowCount()
+    def add_new_block(self, block):
         self.infoBlockchain.insertRow(0)
-        self.infoBlockchain.setItem(0, 0, QTableWidgetItem(str(data['number'])))
+        self.infoBlockchain.setItem(0, 0, QTableWidgetItem(str(block['number'])))
         self.infoBlockchain.item(0, 0).setTextAlignment(Qt.AlignVCenter | Qt.AlignRight)
-        self.infoBlockchain.setItem(0, 1, QTableWidgetItem(data['recipient_pool']))
-        self.infoBlockchain.setItem(0, 2, QTableWidgetItem(data['recipient_fog_node']))
+        self.infoBlockchain.setItem(0, 1, QTableWidgetItem(block['recipient_pool']))
+        self.infoBlockchain.setItem(0, 2, QTableWidgetItem(block['recipient_fog_node']))
         self.infoBlockchain.setItem(0, 3, QTableWidgetItem(
-            datetime.fromtimestamp(data['date']).strftime('%Y-%m-%d %H:%M:%S')))
-        self.infoBlockchain.setItem(0, 4, QTableWidgetItem(json.dumps(data)))
-        if row > 100:
-            self.infoBlockchain.removeRow(row)
+            datetime.fromtimestamp(block['date']).strftime('%Y-%m-%d %H:%M:%S')))
+        self.infoBlockchain.setItem(0, 4, QTableWidgetItem(json.dumps(block)))
 
     def is_run(self):
         return self._is_run
@@ -844,16 +841,47 @@ class PoolWidget(QVBoxLayout):
         self._address_pool = Wallet(private_key).address
         self.addressPoolLabel.setText(self._address_pool)
         self._is_run = True
-        client_app = ClientDCTP(self._address_pool)
 
-        @client_app.method('update_app_pool')
+        self.client_app = ClientDCTP(client_name=self._address_pool, reconnect=True)
+
+        @self.client_app.method('update_app_pool')
         def update_app_pool(request):
             self.add_new_block(request.json['block'])
             self.AllActiveFogNodesLabel.setText(str(request.json['active_fog_nodes']))
             self.AllActivePoolsLabel.setText(str(request.json['active_pool']))
 
-        client_app.connect(DNS_IP, PORT_APP)
-        self.client_app = client_app
+        self.client_app.connect(DNS_IP, PORT_APP)
+
+        worker_load_info_thread = Thread(target=self._worker_load_info)
+        worker_load_info_thread.start()
+
+    def _worker_load_info(self):
+        row = self.infoBlockchain.rowCount()
+        if row == 0:
+            try:
+                block_number = requests.get(f'http://{DNS_NAME}:{PORT_DISPATCHER_CLIENTS_MANAGER}/'
+                                            f'api/get_block_number', timeout=5).json() - 1
+            except:
+                return
+        else:
+            block_number = int(self.infoBlockchain.item(row - 1, 0))
+        i = 0
+        while block_number - i >= 0 and i < 200:
+            try:
+                block = requests.get(f'http://{DNS_NAME}:{PORT_DISPATCHER_CLIENTS_MANAGER}/'
+                                     f'api/get_block/{block_number - i}', timeout=5).json()
+            except:
+                continue
+
+            self.infoBlockchain.setRowCount(row + i + 1)
+            self.infoBlockchain.setItem(row + i,  0, QTableWidgetItem(str(block['number'])))
+            self.infoBlockchain.item(row + i, 0).setTextAlignment(Qt.AlignVCenter | Qt.AlignRight)
+            self.infoBlockchain.setItem(row + i, 1, QTableWidgetItem(block['recipient_pool']))
+            self.infoBlockchain.setItem(row + i, 2, QTableWidgetItem(block['recipient_fog_node']))
+            self.infoBlockchain.setItem(row + i, 3, QTableWidgetItem(
+                datetime.fromtimestamp(block['date']).strftime('%Y-%m-%d %H:%M:%S')))
+            self.infoBlockchain.setItem(row + i, 4, QTableWidgetItem(json.dumps(block)))
+            i += 1
 
     def change_balance_pool(self, amount):
         from utils import amount_format

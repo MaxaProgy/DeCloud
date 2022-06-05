@@ -1,5 +1,7 @@
 py-ecc==5.2.0
 PyQt5==5.15.6
 Flask==2.0.2
+gevent==21.12.0
 pysha3==1.0.2
 requests==2.27.1
+aiohttp==3.8.1

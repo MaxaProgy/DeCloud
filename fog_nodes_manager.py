@@ -99,11 +99,14 @@ class ManagerFogNodes():
             if address in worker['process_clients']:
                 json['address'] = address
                 while True:
-                    response = self._server_fog_nodes.request(id_worker=worker['process_name'],
-                                                      method=method, json=json)
-                    if response.status == 0:
-                        break
-                    sleep(1)
+                    try:
+                        response = self._server_fog_nodes.request(id_worker=worker['process_name'],
+                                                          method=method, json=json)
+                        if response.status == 0:
+                            break
+                        sleep(1)
+                    except Exception as e:
+                        print(888888888889999999999999, e)
 
     def close(self):
         for worker in self.process_worker:

@@ -1,6 +1,6 @@
 import datetime
 
-from utils import exists_path, LoadJsonFile, SaveJsonFile
+from utils import exists_path, LoadJsonFile, SaveJsonFile, print_info
 from wallet import Wallet
 
 
@@ -47,10 +47,11 @@ class ClientState:
     def all_balance(self, amount):
         self._state_client['all_balance'] = amount
         self._save_state()
+
         if self._address in self._server_fn.get_workers():
             try:
                 self._server_fn.request(id_worker=self._address, method='update_balance',
-                                        json={'amount': self._state_client['all_balance']})
+                                        json={'amount': self._state_client['all_balance']}, timeout=1)
             except:
                 pass
 

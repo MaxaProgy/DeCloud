@@ -3,11 +3,10 @@ from argparse import ArgumentParser
 from threading import Thread
 from _pysha3 import keccak_256 as sha3_256
 from multiprocessing import Process
-from flask import Flask, jsonify, request, abort, Response
 from blockchain import Blockchain
 from dctp import ServerDCTP, send_status_code
 from fog_nodes_manager import ManagerFogNodes
-from utils import exists_path, get_path, append_pool_host, LoadJsonFile, SaveJsonFile, load_pools_host
+from utils import exists_path, get_path, append_pool_host, LoadJsonFile, SaveJsonFile, print_info
 from variables import POOL_PORT, POOL_CM_PORT, POOL_FN_PORT
 from wallet import Wallet
 import json as _json
@@ -166,63 +165,70 @@ class Pool(Process):
             if not (self.flask_thread and self.flask_thread.is_alive() and server_FN.is_alive()
                     and server_CM.is_alive() and self._blockchain_thread.is_alive()):
                 try:
-                    print(f'Error POOL {self._wallet.address}')
-                    print(f'FN={server_FN.is_alive()}')
-                    print(f'CM={server_CM.is_alive()}')
-                    print(f'blockchain={self._blockchain_thread.is_alive()}')
-                    print(f'flask={self.flask_thread}')
-                    print(f'flask={self.flask_thread.is_alive()}')
-                    print()
+                    print_info(f'Error POOL {self._wallet.address}')
+                    print_info(f'FN={server_FN.is_alive()}')
+                    print_info(f'CM={server_CM.is_alive()}')
+                    print_info(f'blockchain={self._blockchain_thread.is_alive()}')
+                    print_info(f'flask={self.flask_thread}')
+                    print_info(f'flask={self.flask_thread.is_alive()}')
+                    print_info()
                 except:
                     pass
 
             time.sleep(1)
 
     def run_flask(self, server_FN):
+        from flask import Flask, jsonify, request, abort, Response
+        from gevent.pywsgi import WSGIServer
+
         app = Flask(__name__)
 
         @app.route('/get_my_ip', methods=['GET'])
         def get_my_ip():
             return jsonify(request.remote_addr)
 
-        @app.route('/get_time', methods=['GET'])
-        def get_time():
+        @app.route('/get_sync_time', methods=['GET'])
+        def get_sync_time():
             return jsonify(self._blockchain.sync_utcnow_timestamp())
 
-        @app.route('/get_active_pools_and_count_fog_nodes', methods=['GET'])
-        def get_active_pools_and_count_fog_nodes():
+        @app.route('/get_block_number', methods=['GET'])
+        def get_block_number():
+            return jsonify(self._blockchain.get_block_number())
+
+        @app.route('/sync_pools', methods=['POST'])
+        def sync_pools():
+            try:
+                address, params = _json.loads(request.data)
+            except:
+                abort(400)
+
+            if address in self._blockchain._all_active_pools:
+                if _json.dumps(self._blockchain._all_active_pools[address]) != _json.dumps(params):
+                    append_pool_host(address, *params)
+            else:
+                append_pool_host(address, *params)
+
+            fog_nodes = 0
+            if self._blockchain.is_ready:
+                fog_nodes = self._blockchain.all_active_pools()['fog_nodes'][self._wallet.address]
+
+            return jsonify({'address':self._wallet.address,
+                            'params': self._blockchain.all_active_pools()['params'],
+                            'fog_nodes': fog_nodes})
+
+        @app.route('/active_pools', methods=['GET'])
+        def active_pools():
+            return jsonify(self._blockchain.all_active_pools()['params'])
+
+        @app.route('/count_fog_nodes', methods=['GET'])
+        def count_fog_nodes():
             if self._blockchain.is_ready():
-                active_pools = self._blockchain.now_active_pools()
-                active_pools[self._wallet.address] = {'params': self._blockchain.params(),
-                                                      'fog_nodes': len(self._blockchain.now_active_fog_nodes())}
-                return jsonify(active_pools)
-            abort(404)
+                return jsonify(server_FN.get_count_workers())
+            else:
+                return abort(404)
 
-        @app.route('/register_pool', methods=['POST'])
-        def register_pool():
-            external_ip, internal_ip, address, port_pool, port_cm, port_fn = request.json
-            append_pool_host(address, (external_ip, internal_ip), port_pool, port_cm, port_fn)
-            self._blockchain._now_active_pools[address] = {'params': ((external_ip, internal_ip),
-                                                                      port_pool, port_cm, port_fn), 'fog_nodes': -1}
-            return jsonify()
-
-        @app.route('/get_active_pools', methods=['GET'])
-        def get_active_pools():
-            active_pools = self._blockchain.all_active_pools()
-            if not self._blockchain.is_ready() and self._wallet.address in active_pools:
-                active_pools.pop(self._wallet.address)
-
-            response = {}
-            for key, item in active_pools.items():
-                response[key] = item['params']
-            return jsonify(response)
-
-        @app.route('/get_active_count_fog_nodes', methods=['GET'])
-        def get_active_count_fog_nodes():
-            return jsonify(server_FN.get_count_workers())
-
-        @app.route('/get_active_fog_nodes', methods=['GET'])
-        def get_active_fog_nodes():
+        @app.route('/fog_nodes', methods=['GET'])
+        def fog_nodes():
             return jsonify(server_FN.get_workers())
 
         @app.route('/get_block/<int:number_block>', methods=['GET'])
@@ -233,8 +239,8 @@ class Pool(Process):
         def get_current_winner_pool():
             return jsonify(self._blockchain.winner_address_pool)
 
-        @app.route('/get_genesis_time', methods=['GET'])
-        def get_genesis_time():
+        @app.route('/genesis_time', methods=['GET'])
+        def genesis_time():
             return jsonify(self._blockchain.get_genesis_time())
 
         @app.route('/new_transaction', methods=['POST'])
@@ -261,6 +267,7 @@ class Pool(Process):
 
         @app.route('/load_replica/<string:hash_replica>', methods=['GET'])
         def load_replica(hash_replica):
+            # Ищем в папке waiting_replicas
             if exists_path(f'data/pool/waiting_replicas/{hash_replica}'):
                 with open(get_path(f'data/pool/waiting_replicas/{hash_replica}'), 'rb') as f:
                     return Response(f.read())
@@ -275,6 +282,7 @@ class Pool(Process):
                         return response.json
             abort(404)
 
+        # Баланс кошлелка <address>
         @app.route('/get_balance/<address>', methods=['GET'])
         def get_balance(address):
             return jsonify(self._blockchain.get_balance(address))
@@ -290,6 +298,8 @@ class Pool(Process):
             return jsonify(send_status_code(100, f'Parameter "address" - {address} is not valid'))
 
         app.run(host='0.0.0.0', port=self._port_pool)
+        #pool_server = WSGIServer(('0.0.0.0', self._port_pool), app)
+        #pool_server.serve_forever()
 
 
 if __name__ == '__main__':

@@ -10,6 +10,7 @@ sudo iptables-save
 sudo apt-get install software-properties-common
 sudo add-apt-repository ppa:deadsnakes/ppa
 sudo apt-get -y install python3.7 python3.7-venv python3.7-dev build-essential
+
 python3.7 -m venv venv
 source ./venv/bin/activate
 venv/bin/python3.7 -m pip install --upgrade pip

@@ -162,7 +162,7 @@ class FogNode(BaseFogNode, SyncTime, Thread):
                 try:
                     current_fog_nodes = requests.get(
                         f'http://{self.select_host(*pools[self._address_pool_now_connect][0])}:'
-                        f'{pools[self._address_pool_now_connect][1]}/get_active_count_fog_nodes', timeout=5).json()
+                        f'{pools[self._address_pool_now_connect][1]}/count_fog_nodes', timeout=5).json()
                 except:
                     pass
                 max_fog_nodes = current_fog_nodes
@@ -170,7 +170,7 @@ class FogNode(BaseFogNode, SyncTime, Thread):
             for key in sorted(list(pools), key=lambda A: random()):
                 try:
                     response = requests.get(f'http://{self.select_host(*pools[key][0])}:{pools[key][1]}/'
-                                            f'get_active_pools', timeout=5).json()
+                                            f'active_pools', timeout=5).json()
                 except:
                     continue
 
@@ -182,7 +182,7 @@ class FogNode(BaseFogNode, SyncTime, Thread):
                     if key_response not in active_pools:
                         try:
                             count_fog_nodes = requests.get(f'http://{self.select_host(*response[key_response][0])}:'
-                                                          f'{response[key_response][1]}/get_active_count_fog_nodes',
+                                                          f'{response[key_response][1]}/count_fog_nodes',
                                                           timeout=5).json()
                         except:
                             continue

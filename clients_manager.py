@@ -1,17 +1,13 @@
 # -*- coding: utf-8 -*
 import os
-import random
-import time
+from time import sleep
 from multiprocessing import Process
 from queue import Queue
 import json
 from threading import Thread
-
 import requests
-
 from dctp import ClientDCTP
 from fog_node import BaseFogNode, SIZE_REPLICA
-from flask import Flask, request, jsonify, Response, abort
 from utils import LoadJsonFile, SaveJsonFile, get_path, is_ttl_file, get_random_pool_host, HostParams
 from wallet import Wallet
 
@@ -167,22 +163,23 @@ class DispatcherClientsManager(HostParams, Thread):
         flask_thread.setDaemon(True)
         flask_thread.start()
 
-        while True:
+        while not self._stoping:
             if not self.client_pool.is_connected():
                 self.hosts, self.port, port_cm, _ = get_random_pool_host()
-                if self._stoping:
-                    break
                 self.client_pool.connect(self.select_host(*self.hosts), port_cm)
-            time.sleep(1)
+            sleep(1)
 
     def stop(self):
         self._garbage_collector.stop()
         self.client_pool.disconnect()
         while self._garbage_collector.is_alive() or self.client_pool.is_connected():
-            time.sleep(0.1)
+            sleep(0.1)
         self._stoping = True
 
     def run_flask(self):
+        from flask import Flask, request, jsonify, Response, abort
+        from gevent.pywsgi import WSGIServer
+
         app = Flask(__name__)
         def get_address_normal(address):
             try:
@@ -214,6 +211,22 @@ class DispatcherClientsManager(HostParams, Thread):
             try:
                 return jsonify(self.client_pool.request(id_client=data['address'],
                                                         method='registration_domain_name', json=data).json)
+            except:
+                abort(404)
+
+        @app.route('/api/get_block/<int:number_block>', methods=['GET'])
+        def get_block(number_block):
+            try:
+                return jsonify(requests.get(
+                    f'http://{self.select_host(*self.hosts)}:{self.port}/get_block/{number_block}').json())
+            except:
+                abort(404)
+
+        @app.route('/api/get_block_number', methods=['GET'])
+        def get_block_number():
+            try:
+                return jsonify(requests.get(
+                    f'http://{self.select_host(*self.hosts)}:{self.port}/get_block_number').json())
             except:
                 abort(404)
 
@@ -376,7 +389,8 @@ class DispatcherClientsManager(HostParams, Thread):
                 return jsonify({'json': dct_files_and_directories})
 
         app.run(host='127.0.0.1', port=self._port)
-
+        #cm_server = WSGIServer(('127.0.0.1', self._port), app)
+        #cm_server.serve_forever()
 
 
 class GarbageCollectorClientsManager(Thread):
@@ -406,6 +420,6 @@ class GarbageCollectorClientsManager(Thread):
                         except:
                             # Если папка не пустая, то срабатывает исключение и папка не удаляется
                             pass
-                    time.sleep(0.1)
-            time.sleep(1)
+                    sleep(0.1)
+            sleep(1)
 

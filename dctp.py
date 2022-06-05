@@ -31,37 +31,45 @@ class Response():
         self.data = data
 
 class ClientDCTP():
-    def __init__(self, client_name):
+    def __init__(self, client_name, reconnect=False):
         self._type_connection = ['server to client', 'client to server']
-
-        self.lock_obj = RLock()
+        self._lock_obj = RLock()
         self._client_name = client_name
         self._dict_methods_call = {}
         self._socks = {}
         self._stoping = False
         self._connected = False
+        self._reconnect = reconnect
+        self.receiver_thread = None
 
     @property
     def client_name(self):
         return self._client_name
 
-    def disconnect(self):
-        self._stoping = True
+    def _close_socks(self):
+        self._connected = False
         for type_connect in self._socks:
             try:
                 self._socks[type_connect].close()
             except:
                 pass
 
+    def disconnect(self):
+        self._stoping = True
+        self._close_socks()
+        while self.receiver_thread and self.receiver_thread.is_alive():
+            time.sleep(0.1)
+
     def is_connected(self):
         return self._connected
 
-    # Устанавливаем соединение
-    def connect(self, ip, port):
-        self.disconnect()
-        self._stoping = False
-        self._ip = ip
-        self._port = port
+    def _reconnect_loop(self):
+        while not self._stoping:
+            if not self.is_connected():
+                self._connect()
+            time.sleep(1)
+
+    def _connect(self):
         try:
             for type_connect in self._type_connection:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -79,13 +87,23 @@ class ClientDCTP():
                 self._socks[type_connect] = sock
                 if type_connect == 'server to client':
                     # Созданем поток и принимаем входящие запросы от сервера
-                    receiver_thread = Thread(target=self._receiver, args=[sock])
-                    receiver_thread.start()
-
+                    self.receiver_thread = Thread(target=self._receiver, args=[sock])
+                    self.receiver_thread.start()
             self._connected = True
-            return True
         except:
-            return False
+            pass
+
+    # Устанавливаем соединение
+    def connect(self, ip, port):
+        self.disconnect()
+        self._stoping = False
+        self._ip = ip
+        self._port = port
+        if self._reconnect:
+            reconnect_thread = Thread(target=self._reconnect_loop)
+            reconnect_thread.start()
+        else:
+            self._connect()
 
     def _send_data(self, sock, id_client, json, data):
        sock.send(len(id_client).to_bytes(4, "big") + bytes(id_client, 'utf-8') +
@@ -100,7 +118,6 @@ class ClientDCTP():
         except:
             return
 
-
     def request(self, method, id_client=None, json={}, data=b''):
         if id_client is None:
             id_client = self.client_name
@@ -111,14 +128,16 @@ class ClientDCTP():
         json = _json.dumps(json)
 
         try:
-            with self.lock_obj:
-                # Отправляем запрос серверу
+            with self._lock_obj:
                 sock = self._socks['client to server']
-                self._send_data(sock, id_client, json, data)
-                # Принимаем запрос от сервера
 
+                # Отправляем запрос серверу
+                self._send_data(sock, id_client, json, data)
+
+                # Принимаем запрос от сервера
                 return Response(*self._recv_data(sock))
         except:
+            self._close_socks()
             return Response(send_status_code(100, 'Request break connection'))
 
     def _receiver(self, sock):
@@ -128,21 +147,20 @@ class ClientDCTP():
 
             if request is None:
                 print(f'Client {self._client_name} connection break.')
-                self._connected = False
                 return
 
             if self._stoping:
                 break
             request = Request(*request)
 
-            # готовим ответ серверу
             data = b''
             if request.method in self._dict_methods_call:
                 response = self._dict_methods_call[request.method](request)
-                # если в ответе ни чего нет то создаем ответ
+
                 if request.method == 'stop':
                     break
 
+                # готовим ответ серверу
                 if type(response) == bytes:
                     data = response
                     response = None
@@ -157,7 +175,7 @@ class ClientDCTP():
             json = _json.dumps(response)
             sock.send(len(json).to_bytes(4, "big") + len(data).to_bytes(4, "big") + bytes(json, 'utf-8') + data)
         print_info(f'Client {self._client_name} disconnect {self._ip}:{self._port}')
-        self._connected = False
+        self._close_socks()
 
     def method(self, name_method):
         # Декоратор. Храним ссылки на функции запросов от сервера по их названиям
@@ -233,8 +251,8 @@ class ServerDCTP(Thread):
                         print_warning(f'client {request["id_worker"]} already connect')
                         print(6666666666666666666666, self._workers[request["id_worker"]])
 
-                        #self.close_worker(request["id_worker"])
-                        continue
+                        self.close_worker(request["id_worker"])
+                        #continue
                     worker_sock.settimeout(None)
                     # проверка на валидность подключения через вызываемую функцию-декоратор connect_valid_client
                     valid_connect = True
@@ -324,7 +342,7 @@ class ServerDCTP(Thread):
                     self._dict_methods_call['on_disconnected'](Request(json={"id_worker": id_worker}))
                 break
 
-    def request(self, id_worker, method, json={}, data=b''):
+    def request(self, id_worker, method, json={}, data=b'', timeout=10):
         # Отправляем запрос клиенту и принимаем ответ
         if id_worker not in self._workers:
             return Response(send_status_code(100, f'Client {id_worker} is not connect'))
@@ -342,10 +360,13 @@ class ServerDCTP(Thread):
                 sock.send(len(json).to_bytes(4, "big") + len(data).to_bytes(4, "big") + bytes(json, 'utf-8') + data)
 
                 # принимаем ответ
+                sock.settimeout(timeout)
                 length_json = int.from_bytes(sock.recv(4), 'big')
                 length_data = int.from_bytes(sock.recv(4), 'big')
-                return Response(_json.loads(sock.recv(length_json).decode('utf-8')),
-                                sock.recv(length_data).decode('utf-8'))
+                response = Response(_json.loads(sock.recv(length_json).decode('utf-8')),
+                                    sock.recv(length_data).decode('utf-8'))
+                sock.settimeout(None)
+                return response
         except:
             # если обрыв соединения
             if id_worker in self._workers:

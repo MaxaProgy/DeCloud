@@ -20,7 +20,8 @@ class Wallet:
     @staticmethod
     def address_build_checksum(address):
         # Формируем address по следующему условию:
-        # Если каждый 4 символ в address буква от a до f, то меняем их регистр с lower на upper
+        # i - порядковый номер символа в address. Если 4*i бит хэша от address равен 1 и i-символ в address
+        # буква от a до f, то меняем символ в верхний регистр, иначе если 0, то оставляем в нижнем регисте
         address = address.lower()
         hash_addr = bin(int(sha3_256(address.encode()).hexdigest(), 16))
         hash_addr = '0' * (256 - len(hash_addr)) + hash_addr[2:]
@@ -33,7 +34,7 @@ class Wallet:
         return res
 
     @staticmethod
-    def check_valid_address(address: str):
+    def check_valid_address(address: str) -> bool:
         if len(address) != 40 or not all([char in '0123456789abcdefABCDEF' for char in address]):
             return False
 

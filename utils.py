@@ -16,6 +16,7 @@ WARNING_VIEW = True
 _LETTERS = ascii_lowercase
 NAME_AMOUNT_FORMAT = ['bEx', 'KbEx', 'MbEx', 'GbEx', 'TbEx', 'PbEx', 'EbEx', 'ZbEx', 'YbEx']
 
+
 class HostParams():
     def __init__(self):
         super().__init__()
@@ -24,15 +25,24 @@ class HostParams():
     def get_my_hosts(self):
         import socket
         from time import sleep
+        from random import random
 
         while True:
             try:
-                ext_ip = requests.get("http://ifconfig.me/ip").text
-
                 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 s.connect(("8.8.8.8", 1))
                 int_ip = s.getsockname()[0]
                 s.close()
+
+                for address, params in load_pools_host().items():
+                    try:
+                        ext_ip = requests.get(f'http://{params[0][0]}:{params[1]}/get_my_ip', timeout=0.1).json()
+                    except:
+                        continue
+                    if ext_ip != int_ip:
+                        break
+                else:
+                    ext_ip = requests.get("http://ifconfig.me/ip").text
 
                 return ext_ip, int_ip
             except:
@@ -64,12 +74,13 @@ class SyncTime(HostParams):
                 ip = choice(ip_list)
                 start_time = datetime.utcnow().timestamp()
                 try:
-                    time = requests.get(f'http://{ip}:{hosts[ip]}/get_time', timeout=0.5).json()
+                    time = requests.get(f'http://{ip}:{hosts[ip]}/get_sync_time', timeout=0.5).json()
                 except:
                     continue
                 end_time = datetime.utcnow().timestamp()
-                self.delta = time - (start_time + (end_time - start_time) / 2)
-                break
+                if type(time) == float:
+                    self.delta = time - (start_time + (end_time - start_time) / 2)
+                    break
 
     def sync_utcnow_timestamp(self):
         return datetime.utcnow().timestamp() + self.delta
@@ -130,11 +141,14 @@ def save_pools_host(pools):
 
 def get_random_pool_host():
     pools = load_pools_host()
-    return pools[choice(list(pools.keys()))]
+    return pools[choice(list(pools))]
 
 
-def append_pool_host(name, hosts, port_pool, port_cm, port_fn):
+def append_pool_host(name:str, hosts:list, port_pool:int, port_cm:int, port_fn:int):
     pools = LoadJsonFile('data/hosts').as_dict()
+    for key in list(pools):
+        if json.dumps(pools[key]) == json.dumps((hosts, port_pool, port_cm, port_fn)):
+            pools.pop(key)
     pools[name] = (hosts, port_pool, port_cm, port_fn)
     save_pools_host(pools)
 
@@ -145,6 +159,10 @@ def print_error(*args):
 
 
 def print_info(*args):
+    with open(get_path('data/logs/info.log'), 'a') as f:
+        [f.write(str(arg) + ' ') for arg in args]
+        f.write('\n')
+
     if INFO_VIEW:
         print(*args)
 
