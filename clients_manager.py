@@ -1,17 +1,22 @@
 # -*- coding: utf-8 -*
+import mimetypes
 import os
+import time
 from time import sleep
 from multiprocessing import Process
 from queue import Queue
 import json
 from threading import Thread
 import requests
+from flask import render_template, url_for, send_from_directory, redirect
+
 from dctp import ClientDCTP
 from fog_node import BaseFogNode, SIZE_REPLICA
 from utils import LoadJsonFile, SaveJsonFile, get_path, is_ttl_file, get_random_pool_host, HostParams
 from wallet import Wallet
+from variables import DNS_NAME
 
-TIME_TO_LIFE_FILE_IN_CLIENTS_REPLICAS =  60*60*24
+TIME_TO_LIFE_FILE_IN_CLIENTS_REPLICAS = 60 * 60 * 24
 
 
 class FileExplorer:
@@ -82,7 +87,8 @@ class ClientStorageExplorer(BaseFogNode):
         return self._root_dir
 
     def _load_state(self):
-        hashes_explorer = LoadJsonFile(path=f'data/clients_manager/clients_replicas/{self._id_fog_node}/state.json').as_list()
+        hashes_explorer = LoadJsonFile(
+            path=f'data/clients_manager/clients_replicas/{self._id_fog_node}/state.json').as_list()
         for hash in hashes_explorer:  # Проходим по всем
             info_params_obj = json.loads(self._download_replica(hash))
             if info_params_obj[0] == 'file':  # Если файл
@@ -146,10 +152,9 @@ class ClientStorageExplorer(BaseFogNode):
 
 
 class DispatcherClientsManager(HostParams, Thread):
-    def __init__(self, port):
+    def __init__(self):
         HostParams.__init__(self)
         Process.__init__(self)
-        self._port = port
         self._session_keys = {}
         self._stoping = False
 
@@ -178,14 +183,86 @@ class DispatcherClientsManager(HostParams, Thread):
 
     def run_flask(self):
         from flask import Flask, request, jsonify, Response, abort
-        from gevent.pywsgi import WSGIServer
 
         app = Flask(__name__)
+
         def get_address_normal(address):
-            try:
-                return self.client_pool.request(id_client=address, method='check_valid_address').json['address_normal']
-            except:
-                pass
+            while True:
+                try:
+                    return self.client_pool.request(id_client=address, method='check_valid_address').json[
+                        'address_normal']
+                except:
+                    if self.client_pool.is_connected():
+                        return
+                    time.sleep(0.1)
+
+        @app.template_filter('file_extension')
+        def file_extension_filter(s):
+            lst = s.split('.')
+            ext_file = "unknown"
+            if len(lst) > 1:
+                ext_file = lst[-1]
+            if not ext_file in ['jpeg', 'jpg', 'txt', 'pdf']:
+                ext_file = "unknown.jpg"
+            return ext_file
+
+        @app.route('/', methods=['GET', 'POST'])
+        def main():
+            if request.method == 'POST':
+                return redirect(f'/{request.form["input"]}')
+            else:
+                return render_template('index.html')
+
+        @app.route('/<string:address>', methods=['GET', "POST"])
+        def explorer(address):
+            if address == 'favicon.ico':
+                return send_from_directory(os.path.join(app.root_path, 'static'),
+                                           'favicon.ico', mimetype='image/vnd.microsoft.icon')
+            if request.method == "GET":
+                type_view = request.args.get('type_view')
+                if type_view is None:
+                    type_view = 'list'
+
+                response = requests.get(f'http://{DNS_NAME}/api/get_object/{address}').json()
+                if 'error' in response or not response:
+                    return abort(404)
+                return render_template('explorer.html', dirs=response['json']['dirs'],
+                                       files=response['json']['files'], address=address, id_object_cur=None,
+                                       type_view=type_view)
+            else:
+                # if not all(key in request.form.keys() for key in ['id_object', 'type_object', 'type_view']):
+                # abort(400)
+
+                if request.form['type_object'] == 'dir':
+                    response = requests.get(f'http://{DNS_NAME}/api/get_object/{address}',
+                                            params={'id_object': request.form['id_object']}).json()
+                    print(response)
+                    return render_template('explorer_content.html', dirs=response['json']['dirs'],
+                                           files=response['json']['files'], address=address,
+                                           id_object_cur=request.form['id_object'], type_view=request.form['type_view'])
+                elif request.form['type_object'] == 'file':
+                    response = requests.get(f'http://{DNS_NAME}/api/get_object/{address}',
+                                            params={'id_object': request.form['id_object']})
+
+                    path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'static', 'files', '')
+                    with open(path + request.form['file_name'], 'wb') as f:
+                        [f.write(chunk) for chunk in response.iter_content(SIZE_REPLICA)]
+
+                    if request.form['state'] == 'Скачивать':
+                        return f'static/files/{request.form["file_name"]}'
+                    else:
+                        mimetype = mimetypes.guess_type(request.form["file_name"])[0]
+                        if mimetype is None:
+                            mimetype = "application/octet-stream"
+
+                        if mimetype == 'video/mp4':
+                            return f'<video controls autoplay> <source src="static/files/{request.form["file_name"]}" ' \
+                                   f'type="{mimetype}">Ссылка</video>'
+                        elif mimetype == 'image/jpeg':
+                            return f'<img src="static/files/{request.form["file_name"]}" ' \
+                                   f'type="{mimetype}">'
+                        else:
+                            return ''
 
         @app.route('/api/get_all_ns/<string:address>', methods=['GET'])
         def get_all_ns(address):
@@ -233,14 +310,16 @@ class DispatcherClientsManager(HostParams, Thread):
         @app.route('/api/get_balance/<address>', methods=['GET'])
         def get_balance(address):
             try:
-                return jsonify(requests.get(f'http://{self.select_host(*self.hosts)}:{self.port}/get_balance/{address}').json())
+                return jsonify(
+                    requests.get(f'http://{self.select_host(*self.hosts)}:{self.port}/get_balance/{address}').json())
             except:
                 abort(404)
 
         @app.route('/api/get_free_balance/<address>', methods=['GET'])
         def get_free_balance(address):
             try:
-                return jsonify(requests.get(f'http://{self.select_host(*self.hosts)}:{self.port}/get_free_balance/{address}').json())
+                return jsonify(requests.get(
+                    f'http://{self.select_host(*self.hosts)}:{self.port}/get_free_balance/{address}').json())
             except:
                 abort(404)
 
@@ -248,8 +327,8 @@ class DispatcherClientsManager(HostParams, Thread):
         def new_transaction():
             data = request.json
             try:
-                return jsonify(self.client_pool.request(id_client=data['sender'],
-                                                        method='new_transaction', json=data).json)
+                response = self.client_pool.request(id_client=data['sender'], method='new_transaction', json=data)
+                return jsonify({'status': response.status, 'status_text': response.status_text})
             except:
                 abort(404)
 
@@ -316,7 +395,7 @@ class DispatcherClientsManager(HostParams, Thread):
             hash_dir = client._save_replica(bytes(json.dumps(['dir', current_dir.hash, name]), 'utf-8'))
 
             self.client_pool.request(id_client=data['address'], method='send_replica',
-                                data=bytes(json.dumps(['dir', current_dir.hash, name]), 'utf-8'))
+                                     data=bytes(json.dumps(['dir', current_dir.hash, name]), 'utf-8'))
             self.client_pool.request(id_client=data['address'], method='commit_replica', json={'data': hash_dir})
 
             current_dir.add_child(DirectoryExplorer(name, hash_dir, current_dir))
@@ -347,7 +426,7 @@ class DispatcherClientsManager(HostParams, Thread):
             client = ClientStorageExplorer(address_normal)
 
             id_object = None
-            if ('id_object' in request.args.keys()) and (request.args['id_object'] != ''):
+            if ('id_object' in request.args.keys()) and (request.args['id_object'] not in ('', 'None')):
                 id_object = request.args['id_object']
 
             cur_obj = client.find_object_on_hash(id_object)
@@ -377,20 +456,20 @@ class DispatcherClientsManager(HostParams, Thread):
                     return jsonify(404)
 
                 dct_files_and_directories = {'address': address, 'id_object': id_object,
-                                            'parent': parent_hash, 'files': [], 'dirs': [],
+                                             'parent': parent_hash, 'files': [], 'dirs': [],
                                              'occupied': response['occupied']}
                 if not cur_obj == client.root_dir:
                     dct_files_and_directories['dirs'].append({'name': '..', 'id_object': cur_obj.parent.hash})
                 for child in cur_obj.get_children():
                     response = self.client_pool.request(id_client=address_normal, method='get_info_object',
-                                                   json={'id_object': child.hash}).json
+                                                        json={'id_object': child.hash}).json
                     dct_files_and_directories[{FileExplorer: 'files', DirectoryExplorer: 'dirs'}[type(child)]] += \
                         [{'name': child.name, 'id_object': child.hash, 'info': response['info']}]
                 return jsonify({'json': dct_files_and_directories})
 
-        app.run(host='127.0.0.1', port=self._port)
-        #cm_server = WSGIServer(('127.0.0.1', self._port), app)
-        #cm_server.serve_forever()
+        app.run(host=DNS_NAME, port=80)
+        # cm_server = WSGIServer(('127.0.0.1', self._port), app)
+        # cm_server.serve_forever()
 
 
 class GarbageCollectorClientsManager(Thread):
@@ -422,4 +501,3 @@ class GarbageCollectorClientsManager(Thread):
                             pass
                     sleep(0.1)
             sleep(1)
-

@@ -17,6 +17,8 @@ from utils import exists_path, get_path, get_size_file, print_error, print_info,
     LoadJsonFile, SaveJsonFile, DispatcherSaveFiles, is_ttl_file, load_pools_host, save_pools_host, SyncTime
 from variables import POOL_ROOT_EXTERNAL_IP, POOL_ROOT_INTERNAL_IP, POOL_PORT
 from wallet import Wallet
+from datetime import datetime
+
 
 COUNT_BLOCK_IN_FILE_BLOCKS = 10_000  # количество блоков в одном файле
 LEN_CACHE_BLOCKS = 1000  # количество блоков хранимое в памяти
@@ -458,9 +460,9 @@ class Blockchain(SyncTime, Thread):
             if check_print_info_block_number != self._now_block_number:
                 check_print_info_block_number = self._now_block_number
                 print_info("")
-                print_info(f'================================ № блока {self._now_block_number} ============ ожидание '
-                           f'{int(next_time_block - self.sync_utcnow_timestamp())}сек '
-                           f'до запечатывания блока ================================')
+                print_info(f'{datetime.fromtimestamp(self.sync_utcnow_timestamp()).strftime("%Y-%m-%d %H:%M:%S")} '
+                           f'============ № блока {self._now_block_number} ============ ожидание '
+                           f'{int(next_time_block - self.sync_utcnow_timestamp())}сек до запечатывания блока =========')
 
             while next_time_block - self.sync_utcnow_timestamp() > 0:
                 if self.stoping:
@@ -580,7 +582,6 @@ class Blockchain(SyncTime, Thread):
 
         self._dispatcher_save.commit()
         if self._server_app and self._server_app.is_alive():
-            block['hash_block'] = hash_last_block
             count_all_active_pools, count_all_active_fog_nodes = 0, 0
             for address in self._all_active_pools['params']:
                 if self._all_active_pools['fog_nodes'][address] > 0:

@@ -75,11 +75,11 @@ class Ui_MainWindow(object):
                                  "  background: #2c313c;\n"
                                  " }\n"
                                  "QTabBar::close-button {\n"
-                                 "    image: url(:/icons/icons/x-circle.svg);\n"
+                                 "    image: url(:/icons//x-circle.svg);\n"
                                  "}\n"
                                  "\n"
                                  " QTabBar::close-button:hover {\n"
-                                 "    image: url(:/icons/icons/x-circle(1).svg);\n"
+                                 "    image: url(:/icons//x-circle(1).svg);\n"
                                  "}\n"
                                  "")
         MainWindow.setAnimated(False)
@@ -116,7 +116,7 @@ class Ui_MainWindow(object):
         self.openToolsButton.setStyleSheet("")
         self.openToolsButton.setText("")
         icon = QtGui.QIcon()
-        icon.addPixmap(QtGui.QPixmap(":/icons/icons/align-justify.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon.addPixmap(QtGui.QPixmap(":/icons//align-justify.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.openToolsButton.setIcon(icon)
         self.openToolsButton.setIconSize(QtCore.QSize(24, 24))
         self.openToolsButton.setObjectName("openToolsButton")
@@ -141,7 +141,7 @@ class Ui_MainWindow(object):
         self.allFogNodesButton.setMinimumSize(QtCore.QSize(50, 0))
         self.allFogNodesButton.setStyleSheet("")
         icon1 = QtGui.QIcon()
-        icon1.addPixmap(QtGui.QPixmap(":/icons/icons/layers.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon1.addPixmap(QtGui.QPixmap(":/icons//layers.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.allFogNodesButton.setIcon(icon1)
         self.allFogNodesButton.setIconSize(QtCore.QSize(24, 24))
         self.allFogNodesButton.setObjectName("allFogNodesButton")
@@ -149,7 +149,7 @@ class Ui_MainWindow(object):
         self.allStoragesButton = QtWidgets.QPushButton(self.frame_2)
         self.allStoragesButton.setMinimumSize(QtCore.QSize(50, 0))
         icon2 = QtGui.QIcon()
-        icon2.addPixmap(QtGui.QPixmap(":/icons/icons/grid.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon2.addPixmap(QtGui.QPixmap(":/icons//grid.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.allStoragesButton.setIcon(icon2)
         self.allStoragesButton.setIconSize(QtCore.QSize(24, 24))
         self.allStoragesButton.setObjectName("allStoragesButton")
@@ -157,7 +157,7 @@ class Ui_MainWindow(object):
         self.openPoolButton = QtWidgets.QPushButton(self.frame_2)
         self.openPoolButton.setMinimumSize(QtCore.QSize(50, 0))
         icon3 = QtGui.QIcon()
-        icon3.addPixmap(QtGui.QPixmap(":/icons/icons/globe.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon3.addPixmap(QtGui.QPixmap(":/icons//globe.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.openPoolButton.setIcon(icon3)
         self.openPoolButton.setIconSize(QtCore.QSize(24, 24))
         self.openPoolButton.setObjectName("openPoolButton")
@@ -175,7 +175,7 @@ class Ui_MainWindow(object):
         self.addFogNodeButton = QtWidgets.QPushButton(self.frame_9)
         self.addFogNodeButton.setMinimumSize(QtCore.QSize(50, 0))
         icon4 = QtGui.QIcon()
-        icon4.addPixmap(QtGui.QPixmap(":/icons/icons/package.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon4.addPixmap(QtGui.QPixmap(":/icons//package.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.addFogNodeButton.setIcon(icon4)
         self.addFogNodeButton.setIconSize(QtCore.QSize(24, 24))
         self.addFogNodeButton.setObjectName("addFogNodeButton")
@@ -189,7 +189,7 @@ class Ui_MainWindow(object):
         self.createFolderButton = QtWidgets.QPushButton(self.frame_9)
         self.createFolderButton.setMinimumSize(QtCore.QSize(50, 0))
         icon5 = QtGui.QIcon()
-        icon5.addPixmap(QtGui.QPixmap(":/icons/icons/folder-plus.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon5.addPixmap(QtGui.QPixmap(":/icons//folder-plus.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.createFolderButton.setIcon(icon5)
         self.createFolderButton.setIconSize(QtCore.QSize(24, 24))
         self.createFolderButton.setObjectName("createFolderButton")
@@ -197,7 +197,7 @@ class Ui_MainWindow(object):
         self.openClientStorageButton = QtWidgets.QPushButton(self.frame_9)
         self.openClientStorageButton.setMinimumSize(QtCore.QSize(50, 0))
         icon6 = QtGui.QIcon()
-        icon6.addPixmap(QtGui.QPixmap(":/icons/icons/inbox.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon6.addPixmap(QtGui.QPixmap(":/icons//inbox.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.openClientStorageButton.setIcon(icon6)
         self.openClientStorageButton.setIconSize(QtCore.QSize(24, 24))
         self.openClientStorageButton.setObjectName("openClientStorageButton")
@@ -205,7 +205,7 @@ class Ui_MainWindow(object):
         self.sendFileButton = QtWidgets.QPushButton(self.frame_9)
         self.sendFileButton.setMinimumSize(QtCore.QSize(50, 0))
         icon7 = QtGui.QIcon()
-        icon7.addPixmap(QtGui.QPixmap(":/icons/icons/file-plus.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon7.addPixmap(QtGui.QPixmap(":/icons//file-plus.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.sendFileButton.setIcon(icon7)
         self.sendFileButton.setIconSize(QtCore.QSize(24, 24))
         self.sendFileButton.setObjectName("sendFileButton")
@@ -213,7 +213,7 @@ class Ui_MainWindow(object):
         self.addNSButton = QtWidgets.QPushButton(self.frame_9)
         self.addNSButton.setMinimumSize(QtCore.QSize(50, 0))
         icon8 = QtGui.QIcon()
-        icon8.addPixmap(QtGui.QPixmap(":/icons/icons/user-plus.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon8.addPixmap(QtGui.QPixmap(":/icons//user-plus.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.addNSButton.setIcon(icon8)
         self.addNSButton.setIconSize(QtCore.QSize(24, 24))
         self.addNSButton.setObjectName("addNSButton")
@@ -221,7 +221,7 @@ class Ui_MainWindow(object):
         self.sendByteExButton = QtWidgets.QPushButton(self.frame_9)
         self.sendByteExButton.setMinimumSize(QtCore.QSize(50, 0))
         icon9 = QtGui.QIcon()
-        icon9.addPixmap(QtGui.QPixmap(":/icons/icons/send.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon9.addPixmap(QtGui.QPixmap(":/icons//send.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.sendByteExButton.setIcon(icon9)
         self.sendByteExButton.setIconSize(QtCore.QSize(24, 24))
         self.sendByteExButton.setObjectName("sendByteExButton")
@@ -241,7 +241,7 @@ class Ui_MainWindow(object):
         self.settingsButton = QtWidgets.QPushButton(self.frame_3)
         self.settingsButton.setMinimumSize(QtCore.QSize(50, 0))
         icon10 = QtGui.QIcon()
-        icon10.addPixmap(QtGui.QPixmap(":/icons/icons/info.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon10.addPixmap(QtGui.QPixmap(":/icons//info.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.settingsButton.setIcon(icon10)
         self.settingsButton.setIconSize(QtCore.QSize(24, 24))
         self.settingsButton.setObjectName("settingsButton")
@@ -249,7 +249,7 @@ class Ui_MainWindow(object):
         self.informationButton = QtWidgets.QPushButton(self.frame_3)
         self.informationButton.setMinimumSize(QtCore.QSize(50, 0))
         icon11 = QtGui.QIcon()
-        icon11.addPixmap(QtGui.QPixmap(":/icons/icons/settings.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon11.addPixmap(QtGui.QPixmap(":/icons//settings.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.informationButton.setIcon(icon11)
         self.informationButton.setIconSize(QtCore.QSize(24, 24))
         self.informationButton.setObjectName("informationButton")
@@ -276,7 +276,7 @@ class Ui_MainWindow(object):
         self.closeCenterToolsButton = QtWidgets.QPushButton(self.frame_4)
         self.closeCenterToolsButton.setText("")
         icon12 = QtGui.QIcon()
-        icon12.addPixmap(QtGui.QPixmap(":/icons/icons/x-circle.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon12.addPixmap(QtGui.QPixmap(":/icons//x-circle.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.closeCenterToolsButton.setIcon(icon12)
         self.closeCenterToolsButton.setIconSize(QtCore.QSize(24, 24))
         self.closeCenterToolsButton.setObjectName("closeCenterToolsButton")
@@ -396,7 +396,7 @@ class Ui_MainWindow(object):
                                         "    background-color: #55aaff;\n"
                                         "}")
         icon13 = QtGui.QIcon()
-        icon13.addPixmap(QtGui.QPixmap(":/icons/icons/check-square.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon13.addPixmap(QtGui.QPixmap(":/icons//check-square.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.submitButton.setIcon(icon13)
         self.submitButton.setIconSize(QtCore.QSize(24, 24))
         self.submitButton.setObjectName("submitButton")
@@ -417,10 +417,10 @@ class Ui_MainWindow(object):
         self.changeTopicButton.setStyleSheet("QPushButton {\n"
                                              "    background-repeat:none;\n"
                                              "    background-position: center;\n"
-                                             "    background-image: url(:/icons/icons/sun.svg);\n"
+                                             "    background-image: url(:/icons//sun.svg);\n"
                                              "}\n"
                                              "QPushButton:hover {\n"
-                                             "    background-image: url(:/icons/icons/sun(1).svg);\n"
+                                             "    background-image: url(:/icons//sun(1).svg);\n"
                                              "}")
         self.changeTopicButton.setText("")
         self.changeTopicButton.setObjectName("changeTopicButton")
@@ -462,7 +462,7 @@ class Ui_MainWindow(object):
         self.label_5 = QtWidgets.QLabel(self.frame_8)
         self.label_5.setMaximumSize(QtCore.QSize(30, 30))
         self.label_5.setText("")
-        self.label_5.setPixmap(QtGui.QPixmap(":/images/icon.png"))
+        self.label_5.setPixmap(QtGui.QPixmap(':/icons/icon-decloud.png'))
         self.label_5.setScaledContents(True)
         self.label_5.setObjectName("label_5")
         self.horizontalLayout_6.addWidget(self.label_5)
@@ -488,7 +488,7 @@ class Ui_MainWindow(object):
         self.minimizeButton = QtWidgets.QPushButton(self.frame_7)
         self.minimizeButton.setText("")
         icon14 = QtGui.QIcon()
-        icon14.addPixmap(QtGui.QPixmap(":/icons/icons/minus.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon14.addPixmap(QtGui.QPixmap(":/icons//minus.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.minimizeButton.setIcon(icon14)
         self.minimizeButton.setIconSize(QtCore.QSize(16, 16))
         self.minimizeButton.setObjectName("minimizeButton")
@@ -497,7 +497,7 @@ class Ui_MainWindow(object):
         self.restoreButton.setStyleSheet("")
         self.restoreButton.setText("")
         icon15 = QtGui.QIcon()
-        icon15.addPixmap(QtGui.QPixmap(":/icons/icons/square.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon15.addPixmap(QtGui.QPixmap(":/icons//square.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.restoreButton.setIcon(icon15)
         self.restoreButton.setIconSize(QtCore.QSize(16, 16))
         self.restoreButton.setObjectName("restoreButton")
@@ -512,7 +512,7 @@ class Ui_MainWindow(object):
                                        "}")
         self.closeButton.setText("")
         icon16 = QtGui.QIcon()
-        icon16.addPixmap(QtGui.QPixmap(":/icons/icons/x.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon16.addPixmap(QtGui.QPixmap(":/icons//x.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.closeButton.setIcon(icon16)
         self.closeButton.setIconSize(QtCore.QSize(16, 16))
         self.closeButton.setObjectName("closeButton")
@@ -620,10 +620,8 @@ class Ui_AllClientStoragesDialog(object):
                              "    padding-right: 5px;\n"
                              "    gridline-color: rgb(44, 49, 60);\n"
                              "}\n"
-                             "QListWidget::item:hover{\n"
-                             "    background-color: rgba(85, 170, 255, 200);\n"
-                             "    border-top-left-radius: 20px;\n"
-                             "    \n"
+                             "QListWidget::item:selected{\n"
+                             "    background-color: #55aaff;\n"
                              "}\n"
                              "QScrollBar:horizontal {\n"
                              "    border: none;\n"
@@ -763,7 +761,7 @@ class Ui_AllClientStoragesDialog(object):
         self.label_2 = QtWidgets.QLabel(self.frame_3)
         self.label_2.setMaximumSize(QtCore.QSize(30, 30))
         self.label_2.setText("")
-        self.label_2.setPixmap(QtGui.QPixmap(":/images/icon.png"))
+        self.label_2.setPixmap(QtGui.QPixmap(':/icons/icon-decloud.png'))
         self.label_2.setScaledContents(True)
         self.label_2.setWordWrap(False)
         self.label_2.setOpenExternalLinks(False)
@@ -823,7 +821,7 @@ class Ui_AllClientStoragesDialog(object):
                                     "}")
         self.okButton.setText("")
         icon = QtGui.QIcon()
-        icon.addPixmap(QtGui.QPixmap(":/icons/icons/check.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon.addPixmap(QtGui.QPixmap(":/icons//check.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.okButton.setIcon(icon)
         self.okButton.setIconSize(QtCore.QSize(24, 24))
         self.okButton.setObjectName("okButton")
@@ -839,7 +837,7 @@ class Ui_AllClientStoragesDialog(object):
                                         "}")
         self.cancelButton.setText("")
         icon1 = QtGui.QIcon()
-        icon1.addPixmap(QtGui.QPixmap(":/icons/icons/x.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon1.addPixmap(QtGui.QPixmap(":/icons//x.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.cancelButton.setIcon(icon1)
         self.cancelButton.setIconSize(QtCore.QSize(24, 24))
         self.cancelButton.setObjectName("cancelButton")
@@ -916,7 +914,7 @@ class Ui_SendByteExDialog(object):
         self.label_2 = QtWidgets.QLabel(self.frame_3)
         self.label_2.setMaximumSize(QtCore.QSize(30, 30))
         self.label_2.setText("")
-        self.label_2.setPixmap(QtGui.QPixmap(":/images/icon.png"))
+        self.label_2.setPixmap(QtGui.QPixmap(':/icons/icon-decloud.png'))
         self.label_2.setScaledContents(True)
         self.label_2.setWordWrap(False)
         self.label_2.setOpenExternalLinks(False)
@@ -1016,7 +1014,7 @@ class Ui_SendByteExDialog(object):
                                     "}")
         self.okButton.setText("")
         icon = QtGui.QIcon()
-        icon.addPixmap(QtGui.QPixmap(":/icons/icons/check.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon.addPixmap(QtGui.QPixmap(":/icons//check.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.okButton.setIcon(icon)
         self.okButton.setIconSize(QtCore.QSize(24, 24))
         self.okButton.setObjectName("okButton")
@@ -1032,7 +1030,7 @@ class Ui_SendByteExDialog(object):
                                         "}")
         self.cancelButton.setText("")
         icon1 = QtGui.QIcon()
-        icon1.addPixmap(QtGui.QPixmap(":/icons/icons/x.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon1.addPixmap(QtGui.QPixmap(":/icons//x.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.cancelButton.setIcon(icon1)
         self.cancelButton.setIconSize(QtCore.QSize(24, 24))
         self.cancelButton.setObjectName("cancelButton")
@@ -1126,7 +1124,7 @@ class Ui_CreateFolderDialog(object):
         self.label_2 = QtWidgets.QLabel(self.frame_3)
         self.label_2.setMaximumSize(QtCore.QSize(30, 30))
         self.label_2.setText("")
-        self.label_2.setPixmap(QtGui.QPixmap(":/images/icon.png"))
+        self.label_2.setPixmap(QtGui.QPixmap(':/icons/icon-decloud.png'))
         self.label_2.setScaledContents(True)
         self.label_2.setWordWrap(False)
         self.label_2.setOpenExternalLinks(False)
@@ -1195,7 +1193,7 @@ class Ui_CreateFolderDialog(object):
                                     "}")
         self.okButton.setText("")
         icon = QtGui.QIcon()
-        icon.addPixmap(QtGui.QPixmap(":/icons/icons/check.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon.addPixmap(QtGui.QPixmap(":/icons//check.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.okButton.setIcon(icon)
         self.okButton.setIconSize(QtCore.QSize(24, 24))
         self.okButton.setObjectName("okButton")
@@ -1211,7 +1209,7 @@ class Ui_CreateFolderDialog(object):
                                         "}")
         self.cancelButton.setText("")
         icon1 = QtGui.QIcon()
-        icon1.addPixmap(QtGui.QPixmap(":/icons/icons/x.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon1.addPixmap(QtGui.QPixmap(":/icons//x.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.cancelButton.setIcon(icon1)
         self.cancelButton.setIconSize(QtCore.QSize(24, 24))
         self.cancelButton.setObjectName("cancelButton")
@@ -1228,6 +1226,7 @@ class Ui_CreateFolderDialog(object):
         _translate = QtCore.QCoreApplication.translate
         self.label.setText(_translate("Dialog", "Decloud Create Folder"))
         self.label_3.setText(_translate("Dialog", "Name"))
+
 
 class Ui_AddNSDialog(object):
     class NameLineEdit(QLineEdit):
@@ -1301,7 +1300,7 @@ class Ui_AddNSDialog(object):
         self.label_2 = QtWidgets.QLabel(self.frame_3)
         self.label_2.setMaximumSize(QtCore.QSize(30, 30))
         self.label_2.setText("")
-        self.label_2.setPixmap(QtGui.QPixmap(":/images/icon.png"))
+        self.label_2.setPixmap(QtGui.QPixmap(':/icons/icon-decloud.png'))
         self.label_2.setScaledContents(True)
         self.label_2.setWordWrap(False)
         self.label_2.setOpenExternalLinks(False)
@@ -1367,7 +1366,7 @@ class Ui_AddNSDialog(object):
                                     "}")
         self.okButton.setText("")
         icon = QtGui.QIcon()
-        icon.addPixmap(QtGui.QPixmap(":/icons/icons/check.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon.addPixmap(QtGui.QPixmap(":/icons//check.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.okButton.setIcon(icon)
         self.okButton.setIconSize(QtCore.QSize(24, 24))
         self.okButton.setObjectName("okButton")
@@ -1383,7 +1382,7 @@ class Ui_AddNSDialog(object):
                                         "}")
         self.cancelButton.setText("")
         icon1 = QtGui.QIcon()
-        icon1.addPixmap(QtGui.QPixmap(":/icons/icons/x.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon1.addPixmap(QtGui.QPixmap(":/icons//x.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.cancelButton.setIcon(icon1)
         self.cancelButton.setIconSize(QtCore.QSize(24, 24))
         self.cancelButton.setObjectName("cancelButton")
@@ -1578,7 +1577,7 @@ class Ui_InfoBlockDialog(object):
         self.label_2 = QtWidgets.QLabel(self.frame_3)
         self.label_2.setMaximumSize(QtCore.QSize(30, 30))
         self.label_2.setText("")
-        self.label_2.setPixmap(QtGui.QPixmap(":/images/icon.png"))
+        self.label_2.setPixmap(QtGui.QPixmap(':/icons/icon-decloud.png'))
         self.label_2.setScaledContents(True)
         self.label_2.setWordWrap(False)
         self.label_2.setOpenExternalLinks(False)
@@ -1778,7 +1777,7 @@ class Ui_InfoBlockDialog(object):
                                     "}")
         self.okButton.setText("")
         icon = QtGui.QIcon()
-        icon.addPixmap(QtGui.QPixmap(":/icons/icons/check.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon.addPixmap(QtGui.QPixmap(":/icons//check.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.okButton.setIcon(icon)
         self.okButton.setIconSize(QtCore.QSize(24, 24))
         self.okButton.setObjectName("okButton")
@@ -1803,4 +1802,206 @@ class Ui_InfoBlockDialog(object):
         self.label_4.setText(_translate("Dialog", "Hash block"))
 
 
+class Ui_CreateFogNodesDialog(object):
+    def setupUi(self, Dialog):
+        Dialog.setObjectName("Dialog")
+        Dialog.resize(662, 235)
+        Dialog.setStyleSheet("* {\n"
+                             "    border: none;\n"
+                             "    background-color:transparent;\n"
+                             "    background: transparent;\n"
+                             "    padding: 0;\n"
+                             "    margin:0;\n"
+                             "    color:#fff;\n"
+                             "}\n"
+                             "\n"
+                             "#bodyContainer {\n"
+                             "    background-color: #16191d;\n"
+                             "    border-bottom-left-radius: 25px;\n"
+                             "    border-bottom-right-radius: 25px;\n"
+                             "}\n"
+                             "#headerContainer {\n"
+                             "    background-color: #16191d;\n"
+                             "}\n"
+                             "\n"
+                             "\n"
+                             "/* LINE EDIT */\n"
+                             "QLineEdit {\n"
+                             "    background-color: rgba(39, 44, 54, 150);\n"
+                             "    border-radius: 10px;\n"
+                             "    border: 2px solid rgb(38, 78, 117);\n"
+                             "    padding-left: 10px;\n"
+                             "}\n"
+                             "QLineEdit:hover {\n"
+                             "    border: 2px solid #55aaff;\n"
+                             "}\n"
+                             "QLineEdit:focus {\n"
+                             "    border: 2px solid rgb(91, 101, 124);\n"
+                             "}\n"
+                             "")
+        self.verticalLayout = QtWidgets.QVBoxLayout(Dialog)
+        self.verticalLayout.setContentsMargins(0, 0, 0, 0)
+        self.verticalLayout.setSpacing(0)
+        self.verticalLayout.setObjectName("verticalLayout")
+        self.headerContainer = QtWidgets.QFrame(Dialog)
+        self.headerContainer.setFrameShape(QtWidgets.QFrame.StyledPanel)
+        self.headerContainer.setFrameShadow(QtWidgets.QFrame.Raised)
+        self.headerContainer.setObjectName("headerContainer")
+        self.horizontalLayout = QtWidgets.QHBoxLayout(self.headerContainer)
+        self.horizontalLayout.setContentsMargins(15, 20, 14, 0)
+        self.horizontalLayout.setSpacing(0)
+        self.horizontalLayout.setObjectName("horizontalLayout")
+        self.frame_3 = QtWidgets.QFrame(self.headerContainer)
+        self.frame_3.setFrameShape(QtWidgets.QFrame.StyledPanel)
+        self.frame_3.setFrameShadow(QtWidgets.QFrame.Raised)
+        self.frame_3.setObjectName("frame_3")
+        self.horizontalLayout_3 = QtWidgets.QHBoxLayout(self.frame_3)
+        self.horizontalLayout_3.setContentsMargins(10, 0, 0, 0)
+        self.horizontalLayout_3.setSpacing(5)
+        self.horizontalLayout_3.setObjectName("horizontalLayout_3")
+        self.label_2 = QtWidgets.QLabel(self.frame_3)
+        self.label_2.setMaximumSize(QtCore.QSize(30, 30))
+        self.label_2.setText("")
+        self.label_2.setPixmap(QtGui.QPixmap(":/images/icon.png"))
+        self.label_2.setScaledContents(True)
+        self.label_2.setWordWrap(False)
+        self.label_2.setOpenExternalLinks(False)
+        self.label_2.setObjectName("label_2")
+        self.horizontalLayout_3.addWidget(self.label_2)
+        self.label = QtWidgets.QLabel(self.frame_3)
+        font = QtGui.QFont()
+        font.setPointSize(10)
+        font.setBold(True)
+        font.setWeight(75)
+        self.label.setFont(font)
+        self.label.setObjectName("label")
+        self.horizontalLayout_3.addWidget(self.label)
+        self.horizontalLayout.addWidget(self.frame_3)
+        self.verticalLayout.addWidget(self.headerContainer, 0, QtCore.Qt.AlignTop)
+        self.bodyContainer = QtWidgets.QFrame(Dialog)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Expanding)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.bodyContainer.sizePolicy().hasHeightForWidth())
+        self.bodyContainer.setSizePolicy(sizePolicy)
+        self.bodyContainer.setFrameShape(QtWidgets.QFrame.StyledPanel)
+        self.bodyContainer.setFrameShadow(QtWidgets.QFrame.Raised)
+        self.bodyContainer.setObjectName("bodyContainer")
+        self.horizontalLayout_4 = QtWidgets.QHBoxLayout(self.bodyContainer)
+        self.horizontalLayout_4.setObjectName("horizontalLayout_4")
+        self.frame_2 = QtWidgets.QFrame(self.bodyContainer)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.frame_2.sizePolicy().hasHeightForWidth())
+        self.frame_2.setSizePolicy(sizePolicy)
+        self.frame_2.setFrameShape(QtWidgets.QFrame.StyledPanel)
+        self.frame_2.setFrameShadow(QtWidgets.QFrame.Raised)
+        self.frame_2.setObjectName("frame_2")
+        self.horizontalLayout_5 = QtWidgets.QHBoxLayout(self.frame_2)
+        self.horizontalLayout_5.setContentsMargins(0, 0, 0, 0)
+        self.horizontalLayout_5.setSpacing(0)
+        self.horizontalLayout_5.setObjectName("horizontalLayout_5")
+        self.gridLayout = QtWidgets.QGridLayout()
+        self.gridLayout.setContentsMargins(10, -1, 10, 0)
+        self.gridLayout.setHorizontalSpacing(15)
+        self.gridLayout.setVerticalSpacing(0)
+        self.gridLayout.setObjectName("gridLayout")
+        self.lineEditPath = QtWidgets.QLineEdit(self.frame_2)
+        self.lineEditPath.setMinimumSize(QtCore.QSize(0, 40))
+        self.lineEditPath.setObjectName("lineEditPath")
+        self.gridLayout.addWidget(self.lineEditPath, 2, 0, 1, 1)
+        self.label_3 = QtWidgets.QLabel(self.frame_2)
+        self.label_3.setMinimumSize(QtCore.QSize(0, 30))
+        font = QtGui.QFont()
+        font.setPointSize(9)
+        self.label_3.setFont(font)
+        self.label_3.setObjectName("label_3")
+        self.gridLayout.addWidget(self.label_3, 0, 0, 1, 1)
+        self.pushButtonPathOpen = QtWidgets.QPushButton(self.frame_2)
+        self.pushButtonPathOpen.setMinimumSize(QtCore.QSize(0, 40))
+        self.pushButtonPathOpen.setStyleSheet("QPushButton {\n"
+                                              "    border-radius:5px;\n"
+                                              "    padding: 1px;\n"
+                                              "    background-color: rgba(39, 44, 54, 150);\n"
+                                              "    border-radius: 10px;\n"
+                                              "    border: 2px solid rgb(38, 78, 117);\n"
+                                              "}\n"
+                                              "QPushButton:hover {\n"
+                                              "    background-color: #55aaff;\n"
+                                              "    border: 2px solid  rgb(39, 44, 54);\n"
+                                              "}")
+        self.pushButtonPathOpen.setObjectName("pushButtonPathOpen")
+        self.gridLayout.addWidget(self.pushButtonPathOpen, 2, 1, 1, 1)
+        self.spinBox = QtWidgets.QSpinBox(self.frame_2)
+        self.spinBox.setMinimumSize(QtCore.QSize(0, 40))
+        font = QtGui.QFont()
+        font.setPointSize(9)
+        font.setBold(True)
+        font.setWeight(75)
+        self.spinBox.setFont(font)
+        self.spinBox.setStyleSheet("QSpinBox {\n"
+                                   "    border-radius:5px;\n"
+                                   "    padding: 1px;\n"
+                                   "    border-radius: 10px;\n"
+                                   "    border: 2px solid rgb(38, 78, 117);\n"
+                                   "}")
+        self.spinBox.setObjectName("spinBox")
+        self.gridLayout.addWidget(self.spinBox, 0, 1, 1, 1)
+        self.gridLayout.setColumnStretch(0, 50)
+        self.gridLayout.setColumnStretch(1, 10)
+        self.horizontalLayout_5.addLayout(self.gridLayout)
+        self.horizontalLayout_4.addWidget(self.frame_2)
+        self.frame = QtWidgets.QFrame(self.bodyContainer)
+        self.frame.setFrameShape(QtWidgets.QFrame.StyledPanel)
+        self.frame.setFrameShadow(QtWidgets.QFrame.Raised)
+        self.frame.setObjectName("frame")
+        self.verticalLayout_2 = QtWidgets.QVBoxLayout(self.frame)
+        self.verticalLayout_2.setSpacing(17)
+        self.verticalLayout_2.setObjectName("verticalLayout_2")
+        self.okButton = QtWidgets.QPushButton(self.frame)
+        self.okButton.setMinimumSize(QtCore.QSize(0, 0))
+        self.okButton.setStyleSheet("QPushButton {\n"
+                                    "    border-radius:5px;\n"
+                                    "    padding: 1px;\n"
+                                    "}\n"
+                                    "QPushButton:hover {\n"
+                                    "    background-color: rgb(22, 216, 87);\n"
+                                    "}")
+        self.okButton.setText("")
+        icon = QtGui.QIcon()
+        icon.addPixmap(QtGui.QPixmap(":/icons/check.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        self.okButton.setIcon(icon)
+        self.okButton.setIconSize(QtCore.QSize(24, 24))
+        self.okButton.setObjectName("okButton")
+        self.verticalLayout_2.addWidget(self.okButton)
+        self.cancelButton = QtWidgets.QPushButton(self.frame)
+        self.cancelButton.setMinimumSize(QtCore.QSize(0, 0))
+        self.cancelButton.setStyleSheet("QPushButton {\n"
+                                        "    border-radius:5px;\n"
+                                        "    padding: 1px;\n"
+                                        "}\n"
+                                        "QPushButton:hover {\n"
+                                        "    background-color: rgb(255, 38, 41);\n"
+                                        "}")
+        self.cancelButton.setText("")
+        icon1 = QtGui.QIcon()
+        icon1.addPixmap(QtGui.QPixmap(":/icons/x.svg"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        self.cancelButton.setIcon(icon1)
+        self.cancelButton.setIconSize(QtCore.QSize(24, 24))
+        self.cancelButton.setObjectName("cancelButton")
+        self.verticalLayout_2.addWidget(self.cancelButton)
+        spacerItem = QtWidgets.QSpacerItem(20, 93, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
+        self.verticalLayout_2.addItem(spacerItem)
+        self.horizontalLayout_4.addWidget(self.frame, 0, QtCore.Qt.AlignRight)
+        self.verticalLayout.addWidget(self.bodyContainer)
 
+        self.retranslateUi(Dialog)
+        QtCore.QMetaObject.connectSlotsByName(Dialog)
+
+    def retranslateUi(self, Dialog):
+        _translate = QtCore.QCoreApplication.translate
+        Dialog.setWindowTitle(_translate("Dialog", "Dialog"))
+        self.label.setText(_translate("Dialog", "Decloud Create Fog Nodes"))
+        self.label_3.setText(_translate("Dialog", " Indicate quantity Fog Nodes:"))
+        self.pushButtonPathOpen.setText(_translate("Dialog", "Обзор.."))

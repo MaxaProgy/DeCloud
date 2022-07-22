@@ -1,15 +1,19 @@
 import json
 import os
+from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEnginePage
 import requests
 from datetime import datetime
 from time import sleep
-from utils import LoadJsonFile
+from utils import LoadJsonFile, get_hash, amount_format, print_info
 from threading import Thread, RLock
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QGuiApplication
+from PyQt5.QtCore import Qt, pyqtSignal, QEvent, QUrl
+from PyQt5.QtGui import QGuiApplication, QColor, QIcon
 from PyQt5.QtWidgets import QAbstractItemView, QHeaderView, QFrame, QVBoxLayout, QHBoxLayout, QDialog, QTableWidget, \
-    QLabel, QTableWidgetItem
-from variables import PORT_DISPATCHER_CLIENTS_MANAGER, DNS_NAME
+    QLabel, QTableWidgetItem, QTableView, QToolBar, QAction
+from variables import DNS_NAME, CLIENT_STORAGE_FOREGROUND_COLOR
+from threading import RLock
+
+from wallet import Wallet
 
 
 class ClientStoragesExplorer(QTableWidget):
@@ -217,11 +221,11 @@ class ClientStoragesExplorer(QTableWidget):
     def show_current_object(self):
         from fog_node import SIZE_REPLICA
         from _pysha3 import sha3_256
-        from variables import PORT_DISPATCHER_CLIENTS_MANAGER, DNS_NAME
+        from variables import DNS_NAME
 
         try:
             response = requests.get(
-                f'http://{DNS_NAME}:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/get_object/{self._name}',
+                f'http://{DNS_NAME}/api/get_object/{self._name}',
                 params={'id_object': self._current_id_object})  # Получаем объект
         except:
             self._last_response_hash = ''
@@ -253,7 +257,7 @@ class ClientStoragesExplorer(QTableWidget):
             # Получаем имя файл для сохранения
             try:
                 info_object = requests.get(
-                    f'http://{DNS_NAME}:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/get_info_object/{self._name}',
+                    f'http://{DNS_NAME}/api/get_info_object/{self._name}',
                     params={'id_object': self._current_id_object}).json()
             except:
                 self._last_response_hash = ''
@@ -275,7 +279,7 @@ class ClientStoragesExplorer(QTableWidget):
             try:
                 if self._name != '':
                     info_object = requests.get(
-                        f'http://{DNS_NAME}:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/get_info_object/{self._name}',
+                        f'http://{DNS_NAME}/api/get_info_object/{self._name}',
                         params={'id_object': self._current_id_object}).json()
                     # И если нет ошибки и текуший объект - директория, то обновляем страницу
                     if 'error' not in info_object and info_object['type'] == 'dir':
@@ -297,13 +301,13 @@ class ClientStorageWidget(QVBoxLayout):
     def __init__(self, parent, name: str):
         super().__init__()
         from wallet import Wallet
-        from variables import DNS_NAME, PORT_DISPATCHER_CLIENTS_MANAGER
+        from variables import DNS_NAME
         from utils import LoadJsonFile
 
         self._name = name  # Текущее имя клиента
         try:  # Адрес клиента
             self._address = requests.get(
-                f'http://{DNS_NAME}:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/address_normal/{name}').json()
+                f'http://{DNS_NAME}/api/address_normal/{name}').json()
         except:
             print(f'Клиента с именем {name} не существует в сети')
             return
@@ -410,7 +414,7 @@ class ClientStorageWidget(QVBoxLayout):
             self.label_message.show()
 
     def context_menu_open(self, position):
-        from variables import PORT_DISPATCHER_CLIENTS_MANAGER, DNS_NAME
+        from variables import DNS_NAME
         from PyQt5.QtWidgets import QAction, QMenu
 
         context_menu = QMenu(self.clientStoragesExplorer)
@@ -423,7 +427,7 @@ class ClientStorageWidget(QVBoxLayout):
         try:
             # Запрашиваем все ns клиента
             response = requests.get(
-                f'http://{DNS_NAME}:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/get_all_ns/{self._address}').json()
+                f'http://{DNS_NAME}/api/get_all_ns/{self._address}').json()
             if response:  # Если есть хотя бы 1 ns
                 useNs_menu = QMenu('Use ns')
                 context_menu.addMenu(useNs_menu)
@@ -450,14 +454,14 @@ class ClientStorageWidget(QVBoxLayout):
         self.changeNs.emit(self._name, self._address)  # Изменяем старое имя на новое
 
     def registration_domain_name(self):
-        from variables import PORT_DISPATCHER_CLIENTS_MANAGER, DNS_NAME
+        from variables import DNS_NAME
 
         addNSDialog = AddNSDialog()
         if addNSDialog.exec_() == QDialog.Accepted:
             try:
                 data = {'address': self._address,
                         'name': addNSDialog.ui.nameLineEdit.text()}  # Отправляем запрос на регистрацию нового ns
-                requests.post(f'http://{DNS_NAME}:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/registration_domain_name',
+                requests.post(f'http://{DNS_NAME}/api/registration_domain_name',
                               json=data)
             except:
                 pass
@@ -518,7 +522,7 @@ class ClientStorageWidget(QVBoxLayout):
                 row += 1
 
     def create_folder(self):
-        from variables import PORT_DISPATCHER_CLIENTS_MANAGER, DNS_NAME
+        from variables import DNS_NAME
         from PyQt5.QtWidgets import QMessageBox
 
         createFolderDialog = CreateFolderDialog()
@@ -533,7 +537,7 @@ class ClientStorageWidget(QVBoxLayout):
             if id_current_dir:
                 data['id_current_dir'] = id_current_dir
             data = self.signed_data_request(data)
-            response = requests.get(f'http://{DNS_NAME}:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/make_dir',
+            response = requests.get(f'http://{DNS_NAME}/api/make_dir',
                                     json=data).json()
             if 'error' in response:
                 QMessageBox.critical(self.clientStoragesExplorer, "Error", response['error'], QMessageBox.Ok)
@@ -542,7 +546,7 @@ class ClientStorageWidget(QVBoxLayout):
             self.clientStoragesExplorer.show_current_object()
 
     def send_file(self):
-        from variables import PORT_DISPATCHER_CLIENTS_MANAGER, DNS_NAME
+        from variables import DNS_NAME
         from PyQt5.QtWidgets import QMessageBox, QFileDialog
 
         # Загрузка файла
@@ -568,7 +572,7 @@ class ClientStorageWidget(QVBoxLayout):
                 params['id_current_dir'] = id_current_dir
 
             params = self.signed_data_request(params)
-            response = requests.post(f'http://{DNS_NAME}:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/save_file',
+            response = requests.post(f'http://{DNS_NAME}/api/save_file',
                                      params=params,
                                      data=self.chunking(path)).json()
             if 'error' in response:
@@ -592,6 +596,7 @@ class PoolWidget(QVBoxLayout):
         self.port_pool = parent.port_pool
         self.port_cm = parent.port_cm
         self.port_fn = parent.port_fn
+        self.block_number = 0
         self.initUI()
 
     def initUI(self):
@@ -772,6 +777,7 @@ class PoolWidget(QVBoxLayout):
         self.infoBlockchain.setSelectionMode(QAbstractItemView.SingleSelection)
         self.infoBlockchain.setCurrentCell(0, 0)
         self.infoBlockchain.doubleClicked.connect(self.show_info_block)  # Обработка на нажатие на ячейку
+        self.infoBlockchain.verticalScrollBar().valueChanged.connect(self.move_scroll)
         self.addWidget(self.infoBlockchain)
 
         # --------- Widget all balance ---------
@@ -797,6 +803,12 @@ class PoolWidget(QVBoxLayout):
         if private_key:  # В файле всегда 1 ключ, если он есть, значит пул уже был создан, поэтому запускаем пул
             self.start_pool(private_key)
 
+    def move_scroll(self):
+        if self.infoBlockchain.verticalScrollBar().maximum() - 20 < self.infoBlockchain.verticalScrollBar().value():
+            if not self.worker_load_info_thread or not self.worker_load_info_thread.is_alive():
+                self.worker_load_info_thread = Thread(target=self._worker_load_info)
+                self.worker_load_info_thread.start()
+
     def stop(self):
         from time import sleep
         if self.pool:
@@ -813,14 +825,16 @@ class PoolWidget(QVBoxLayout):
         infoBlock.exec_()
 
     def add_new_block(self, block):
-        self.infoBlockchain.insertRow(0)
-        self.infoBlockchain.setItem(0, 0, QTableWidgetItem(str(block['number'])))
-        self.infoBlockchain.item(0, 0).setTextAlignment(Qt.AlignVCenter | Qt.AlignRight)
-        self.infoBlockchain.setItem(0, 1, QTableWidgetItem(block['recipient_pool']))
-        self.infoBlockchain.setItem(0, 2, QTableWidgetItem(block['recipient_fog_node']))
-        self.infoBlockchain.setItem(0, 3, QTableWidgetItem(
-            datetime.fromtimestamp(block['date']).strftime('%Y-%m-%d %H:%M:%S')))
-        self.infoBlockchain.setItem(0, 4, QTableWidgetItem(json.dumps(block)))
+        if block['number'] > self.block_number:
+            self.infoBlockchain.insertRow(0)
+            self.infoBlockchain.setItem(0, 0, QTableWidgetItem(str(block['number'])))
+            self.infoBlockchain.item(0, 0).setTextAlignment(Qt.AlignVCenter | Qt.AlignRight)
+            self.infoBlockchain.setItem(0, 1, QTableWidgetItem(block['recipient_pool']))
+            self.infoBlockchain.setItem(0, 2, QTableWidgetItem(block['recipient_fog_node']))
+            self.infoBlockchain.setItem(0, 3, QTableWidgetItem(
+                datetime.fromtimestamp(block['date']).strftime('%Y-%m-%d %H:%M:%S')))
+            block['hash_block'] = get_hash(block)
+            self.infoBlockchain.setItem(0, 4, QTableWidgetItem(json.dumps(block)))
 
     def is_run(self):
         return self._is_run
@@ -846,30 +860,33 @@ class PoolWidget(QVBoxLayout):
 
         @self.client_app.method('update_app_pool')
         def update_app_pool(request):
+            print_info(6666666666666666666666666666)
             self.add_new_block(request.json['block'])
             self.AllActiveFogNodesLabel.setText(str(request.json['active_fog_nodes']))
             self.AllActivePoolsLabel.setText(str(request.json['active_pool']))
+            print_info(77777777777777777777777777770)
 
         self.client_app.connect(DNS_IP, PORT_APP)
 
-        worker_load_info_thread = Thread(target=self._worker_load_info)
-        worker_load_info_thread.start()
+        self.worker_load_info_thread = Thread(target=self._worker_load_info)
+        self.worker_load_info_thread.start()
 
     def _worker_load_info(self):
         row = self.infoBlockchain.rowCount()
         if row == 0:
             try:
-                block_number = requests.get(f'http://{DNS_NAME}:{PORT_DISPATCHER_CLIENTS_MANAGER}/'
+                self.block_number = requests.get(f'http://{DNS_NAME}/'
                                             f'api/get_block_number', timeout=5).json() - 1
             except:
                 return
         else:
-            block_number = int(self.infoBlockchain.item(row - 1, 0))
+            self.block_number = int(self.infoBlockchain.item(row - 1, 0).text()) - 1
+
         i = 0
-        while block_number - i >= 0 and i < 200:
+        while self.block_number - i >= 0 and i < 20:
             try:
-                block = requests.get(f'http://{DNS_NAME}:{PORT_DISPATCHER_CLIENTS_MANAGER}/'
-                                     f'api/get_block/{block_number - i}', timeout=5).json()
+                block = requests.get(f'http://{DNS_NAME}/'
+                                            f'api/get_block/{self.block_number - i}', timeout=5).json()
             except:
                 continue
 
@@ -880,6 +897,7 @@ class PoolWidget(QVBoxLayout):
             self.infoBlockchain.setItem(row + i, 2, QTableWidgetItem(block['recipient_fog_node']))
             self.infoBlockchain.setItem(row + i, 3, QTableWidgetItem(
                 datetime.fromtimestamp(block['date']).strftime('%Y-%m-%d %H:%M:%S')))
+            block['hash_block'] = get_hash(block)
             self.infoBlockchain.setItem(row + i, 4, QTableWidgetItem(json.dumps(block)))
             i += 1
 
@@ -898,7 +916,7 @@ class FogNodesWidget(QHBoxLayout):
         super().__init__()
         self.ui = parent.ui
         self.clipboard = QGuiApplication.clipboard()  # Буфер обмена
-        self.lock_obj = RLock()
+        self._lock_obj = RLock()
         self.initUI()
 
     def initUI(self):
@@ -910,9 +928,11 @@ class FogNodesWidget(QHBoxLayout):
         from variables import CLIENT_STORAGE_FOREGROUND_COLOR
         from PyQt5.QtWidgets import QAbstractItemView, QHeaderView, QTableWidgetItem, QFrame
 
+
         # --------- Foge Nodes ---------
-        labels = ['Name', 'State', 'Amount', 'Full amount', 'Normal Address']  # Заголовки таблицы
+        labels = ['Name', 'State', 'IP Pool connect', 'Amount', 'Full amount', 'Normal Address']  # Заголовки таблицы
         self.fogNodesTableWidget = QTableWidget()
+
         self.fogNodesTableWidget.setColumnCount(len(labels))  # Устанавливаем количество колонок
         self.fogNodesTableWidget.setHorizontalHeaderLabels(labels)  # Устанавливаем заголовки
         self.fogNodesTableWidget.verticalHeader().hide()  # Скрываем нумерацию рядов
@@ -922,8 +942,9 @@ class FogNodesWidget(QHBoxLayout):
         self.fogNodesTableWidget.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.fogNodesTableWidget.setColumnWidth(1, self.fogNodesTableWidget.width() // 6)
         self.fogNodesTableWidget.setColumnWidth(2, self.fogNodesTableWidget.width() // 5)
-        self.fogNodesTableWidget.setColumnHidden(3, True)  # Скрываем 3 ячейку - баланс в байтах
-        self.fogNodesTableWidget.setColumnHidden(4, True)  # Скрываем 4 ячейку - адрес
+        self.fogNodesTableWidget.setColumnWidth(3, self.fogNodesTableWidget.width() // 5)
+        self.fogNodesTableWidget.setColumnHidden(4, True)  # Скрываем 3 ячейку - баланс в байтах
+        self.fogNodesTableWidget.setColumnHidden(5, True)  # Скрываем 4 ячейку - адрес
 
         self.fogNodesTableWidget.setStyleSheet("* {\n"
                                                "    background: transparent;\n"
@@ -1074,7 +1095,9 @@ class FogNodesWidget(QHBoxLayout):
             address = Wallet(key).address
             self.fogNodesTableWidget.setRowCount(row + 1)
             self.fogNodesTableWidget.setItem(row, 0, QTableWidgetItem(address))  # Устанавливаем имя node
-            self.fogNodesTableWidget.setItem(row, 4, QTableWidgetItem(address))  # Устанавливаем адрес node
+            self.fogNodesTableWidget.setItem(row, 5, QTableWidgetItem(address))  # Устанавливаем адрес node
+            self.fogNodesTableWidget.setItem(row, 4, QTableWidgetItem('0'))
+            self.fogNodesTableWidget.setItem(row, 1, QTableWidgetItem('preparing'))
             if address in clients_address:  # Если node являестся client storage, то меняем стиль
                 self.fogNodesTableWidget.item(row, 0).setForeground(QColor(CLIENT_STORAGE_FOREGROUND_COLOR))
             row += 1
@@ -1086,7 +1109,6 @@ class FogNodesWidget(QHBoxLayout):
         # Создаем контекстное меню
         self.fogNodesTableWidget.setContextMenuPolicy(Qt.CustomContextMenu)
         self.fogNodesTableWidget.customContextMenuRequested.connect(self._context_menu_open)
-
         self.fogNodesTableWidget.cellClicked.connect(self.current_item_change)  # Обработка на нажатие на ячейку
 
         self.mfn = ManagerFogNodes()
@@ -1098,15 +1120,15 @@ class FogNodesWidget(QHBoxLayout):
         self.addSpacing(10)
 
     def current_item_change(self, row, column):
-        from variables import CLIENT_STORAGE_FOREGROUND_COLOR
-
         self.ui.openPoolButton.setVisible(bool(self._address_pool))
         self.ui.createPoolButton.setVisible(not self._address_pool)
         # Изменяем подсказку и изображение кнопки
         if self.fogNodesTableWidget.item(row, 0).foreground().color().name() == CLIENT_STORAGE_FOREGROUND_COLOR:
             self.ui.openClientStorageButton.setText('    Open Client Storage')
+            self.ui.openClientStorageButton.setToolTip('Open Client Storage')
         else:
             self.ui.openClientStorageButton.setText('    Create Client Storage')
+            self.ui.openClientStorageButton.setToolTip('Create Client Storage')
 
     def create_pool(self):
         from wallet import Wallet
@@ -1115,7 +1137,7 @@ class FogNodesWidget(QHBoxLayout):
         self.ui.createPoolButton.hide()
         self.ui.openPoolButton.show()
 
-        address = self.fogNodesTableWidget.item(self.fogNodesTableWidget.currentRow(), 4).text()
+        address = self.fogNodesTableWidget.item(self.fogNodesTableWidget.currentRow(), 5).text()
         for key in LoadJsonFile('data/fog_nodes/key').as_list():
             if Wallet(key).address == address:
                 self._address_pool = address
@@ -1131,25 +1153,37 @@ class FogNodesWidget(QHBoxLayout):
         self.clipboard.setText(self.current_fog_node())
 
     def create_node(self):
-        # Создаем новую node
-        self.mfn.add_fog_node()
-        self.ui.createPoolButton.setVisible(self._address_pool == '')
-        self.ui.openPoolButton.setVisible(self._address_pool != '')
-        self.ui.openClientStorageButton.setVisible(True)
+        from wallet import Wallet
+        # Создаем новую fog_node
+        create_dialog = CreateFogNodes()
+        if create_dialog.exec_() == QDialog.Accepted:
+            self.ui.addFogNodeButton.setEnabled(False)
+            wallets = []
+            with self._lock_obj:
+                self.fogNodesTableWidget.setSortingEnabled(False)
+                for _ in range(create_dialog.ui.spinBox.value()):
+                    wallet = self.mfn.create_fog_node()
+                    wallets.append(wallet)
+                    row = self.fogNodesTableWidget.rowCount()
+                    self.fogNodesTableWidget.setRowCount(row + 1)
+                    self.fogNodesTableWidget.setItem(row, 0, QTableWidgetItem(wallet.address))
+                    self.fogNodesTableWidget.setItem(row, 5, QTableWidgetItem(wallet.address))
+                    self.fogNodesTableWidget.setItem(row, 4, QTableWidgetItem('0'))
+                    self.fogNodesTableWidget.setItem(row, 1, QTableWidgetItem('preparing'))
+                self.fogNodesTableWidget.setSortingEnabled(True)
+                self.fogNodesTableWidget.setCurrentCell(row, 0)
+
+            [self.mfn.start_fog_node(wallet) for wallet in wallets]
 
     def on_change_balance(self, request):
-        from PyQt5.QtCore import Qt
-        from utils import amount_format
-        from PyQt5.QtWidgets import QTableWidgetItem
-
-        with self.lock_obj:
+        with self._lock_obj:
             for i in range(self.fogNodesTableWidget.rowCount()):
-                if self.fogNodesTableWidget.item(i, 4).text() == request.id_client:
+                if self.fogNodesTableWidget.item(i, 5).text() == request.id_client:
                     # Изменяем баланс нады, чей адрес совпадает с отправленным
-                    self.fogNodesTableWidget.setItem(i, 2, QTableWidgetItem(amount_format(request.json['amount'])))  # Новый баланс
-                    self.fogNodesTableWidget.setItem(i, 3, QTableWidgetItem(str(request.json['amount'])))  # Новый баланс в байтах
-                    self.fogNodesTableWidget.item(i, 2).setTextAlignment(Qt.AlignVCenter | Qt.AlignRight)
-                    if self.fogNodesTableWidget.item(i, 4).text() == self._address_pool:
+                    self.fogNodesTableWidget.setItem(i, 3, QTableWidgetItem(amount_format(request.json['amount'])))  # Новый баланс
+                    self.fogNodesTableWidget.setItem(i, 4, QTableWidgetItem(str(request.json['amount'])))  # Новый баланс в байтах
+                    self.fogNodesTableWidget.item(i, 3).setTextAlignment(Qt.AlignVCenter | Qt.AlignRight)
+                    if self.fogNodesTableWidget.item(i, 5).text() == self._address_pool:
                         # Если нода является пулом, то меняем и баланс пула
                         self.changeBalancePool.emit(request.json['amount'])
                     self.changeBalanceClientsStorage.emit(self.fogNodesTableWidget.item(i, 0).text(), request.json['amount'])
@@ -1158,28 +1192,22 @@ class FogNodesWidget(QHBoxLayout):
 
     def on_change_state(self, request):
         # Изменение состояния fog node
-        from PyQt5.QtGui import QColor
-        from variables import BACKGROUND_COLOR
-        from PyQt5.QtWidgets import QTableWidgetItem
-
-        with self.lock_obj:
+        with self._lock_obj:
             for i in range(self.fogNodesTableWidget.rowCount()):
-                if self.fogNodesTableWidget.item(i, 4).text() == request.id_client:
+                if self.fogNodesTableWidget.item(i, 5).text() == request.id_client:
                     self.fogNodesTableWidget.setItem(i, 1, QTableWidgetItem(request.json['state']))
-                    self.fogNodesTableWidget.repaint()
+                    if request.json['state'] == 'work':
+                        self.fogNodesTableWidget.setItem(i, 2, QTableWidgetItem(request.json['ip_pool']))
+                    elif request.json['state'] == 'connecting':
+                        self.fogNodesTableWidget.setItem(i, 2, QTableWidgetItem(''))
+                    self.fogNodesTableWidget.hide()
+                    self.fogNodesTableWidget.show()
                     break
-            else:  # Состояние пришло первый раз, создаем запись
-                row = self.fogNodesTableWidget.rowCount()
-                self.fogNodesTableWidget.setRowCount(row + 1)
-                # Добавляем новую запись в таблицу без сортировки, чтобы другие ряды не сбились
-                self.fogNodesTableWidget.setSortingEnabled(False)
-                self.fogNodesTableWidget.setItem(row, 0, QTableWidgetItem(request.id_client))
-                self.fogNodesTableWidget.item(row, 0).setBackground(QColor(BACKGROUND_COLOR))
-                self.fogNodesTableWidget.setItem(row, 4, QTableWidgetItem(request.id_client))
-                self.fogNodesTableWidget.setItem(row, 1, QTableWidgetItem(request.json['state']))
-                self.fogNodesTableWidget.setItem(row, 3, QTableWidgetItem('0'))
-                self.fogNodesTableWidget.setCurrentCell(row, 0)
-                self.fogNodesTableWidget.setSortingEnabled(True)
+            if request.json['state'] == 'connecting':
+                self.ui.createPoolButton.setVisible(not self._address_pool)
+                self.ui.addFogNodeButton.setEnabled(True)
+            self.ui.openPoolButton.setVisible(bool(self._address_pool))
+
             print(f'Node {request.id_client} {request.json["state"]}')
 
     def _context_menu_open(self, position):
@@ -1201,8 +1229,10 @@ class FogNodesWidget(QHBoxLayout):
         from wallet import Wallet
 
         self.ui.openClientStorageButton.setText('    Open Client Storage')  # Изменение стилей кнопки с create -> open
+        self.ui.openClientStorageButton.setToolTip('Open Client Storage')
+
         for key in LoadJsonFile('data/fog_nodes/key').as_list():
-            if Wallet(key).address == self.fogNodesTableWidget.item(self.fogNodesTableWidget.currentRow(), 4).text():
+            if Wallet(key).address == self.fogNodesTableWidget.item(self.fogNodesTableWidget.currentRow(), 5).text():
                 if key not in LoadJsonFile('data/clients_manager/key').as_list():
                     Wallet(key).save_private_key('data/clients_manager/key')
                     break
@@ -1241,7 +1271,7 @@ class Send_ByteEx(QDialog):
         self.clickPosition = event.globalPos()
 
     def send_request(self):
-        from variables import PORT_DISPATCHER_CLIENTS_MANAGER, DNS_NAME
+        from variables import DNS_NAME
         from PyQt5.QtWidgets import QMessageBox
         sender = self.ui.senderLineEdit.text().strip()
         owner = self.ui.ownerLineEdit.text().strip()
@@ -1250,7 +1280,7 @@ class Send_ByteEx(QDialog):
             return
         amount = int(self.ui.amountLineEdit.text())
         try:  # Получаем баланс, которым может воспользываться пользователь
-            response = requests.get(f'http://{DNS_NAME}:{PORT_DISPATCHER_CLIENTS_MANAGER}/'
+            response = requests.get(f'http://{DNS_NAME}/'
                                     f'api/get_free_balance/{sender}').json()
         except:
             QMessageBox.critical(self, "Error", 'Error connection', QMessageBox.Ok)
@@ -1264,7 +1294,7 @@ class Send_ByteEx(QDialog):
             transaction = {'sender': sender, 'owner': owner,
                            'count': amount}
             try:  # Формирование и отправка транзакции
-                response = requests.post(f'http://{DNS_NAME}:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/new_transaction',
+                response = requests.post(f'http://{DNS_NAME}/api/new_transaction',
                                          json=transaction)
             except:
                 pass
@@ -1322,9 +1352,36 @@ class SearchClientStorage(QVBoxLayout):
     def initUI(self):
         from PyQt5.QtGui import QFont
         from PyQt5.QtWidgets import QHBoxLayout, QPushButton
-
         # ------------ Widgets search ------------
         layout = QHBoxLayout()
+        self.browser = QWebEngineView()
+        self.browser.page().setBackgroundColor(QColor('#1f232a'))
+        self.browser.urlChanged.connect(self.update_urlbar)
+
+        back_btn = QPushButton()
+        back_btn.setIcon(QIcon(os.path.join('static', 'arrow-180.png')))
+        back_btn.setStatusTip("Back to previous page")
+        back_btn.clicked.connect(self.browser.back)
+        layout.addWidget(back_btn)
+
+        next_btn = QPushButton()
+        next_btn.setIcon(QIcon(os.path.join('static', 'arrow-000.png')))
+        next_btn.setStatusTip("Forward to next page")
+        next_btn.clicked.connect(self.browser.forward)
+        layout.addWidget(next_btn)
+
+        reload_btn = QPushButton()
+        reload_btn.setIcon(QIcon(os.path.join('static', 'arrow-circle-315.png')))
+        reload_btn.setStatusTip("Reload page")
+        reload_btn.clicked.connect(self.browser.reload)
+        layout.addWidget(reload_btn)
+
+        home_btn = QPushButton()
+        home_btn.setIcon(QIcon(os.path.join('static', 'home.png')))
+        home_btn.setStatusTip("Go home")
+        home_btn.clicked.connect(self.navigate_home)
+        layout.addWidget(home_btn)
+
         self.search = self.QSearchLineEdit()
         self.search.setToolTip('Введите путь для отображения объекта')
         self.search.setFont(QFont("Verdana", 8))
@@ -1348,10 +1405,10 @@ class SearchClientStorage(QVBoxLayout):
         self.searchButton.setStyleSheet("""QPushButton {
                                             background-repeat:none;
                                             background-position: center;
-                                            background-image: url(:/icons/icons/search.svg);
+                                            background-image: url(:/icons/search.svg);
                                             }
                                             QPushButton:hover {
-                                            background-image: url(:/icons/icons/search(1).svg);
+                                            background-image: url(:/icons/search(1).svg);
                                             }
         """)
         self.searchButton.setMinimumSize(30, 30)
@@ -1359,76 +1416,26 @@ class SearchClientStorage(QVBoxLayout):
         self.addLayout(layout)
         self.searchButton.clicked.connect(self.search_path)
         # ------------ Widgets explorer ------------
-        self.clientStoragesExplorer = ClientStoragesExplorer()
-        self.clientStoragesExplorer.update_dir.connect(self.update_dir)
-        self.clientStoragesExplorer.message.connect(self.message_explorer)
-        self.clientStoragesExplorer.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.clientStoragesExplorer.customContextMenuRequested.connect(self.context_menu_open)
-        self.clientStoragesExplorer.hide()
-        self.addWidget(self.clientStoragesExplorer)
+
+        self.addWidget(self.browser)
+
+        self.search_path()
 
     def search_path(self):
-        path = self.search.text()  # Путь указанный в строке поиска
-        if self.message:
-            self.message.label_message.hide()
-            self.removeItem(self.message)
-            self.message = None
+        text = self.search.text()
 
-        if path != self.clientStoragesExplorer.get_path():
-            # Изменяем состояние приложения, если указаный путь стал новым
-            self.changeSearchState.emit(path)
-        self.clientStoragesExplorer.change_path(path)  # Отображаем путь
+        if text == '':
+            text = DNS_NAME
+        q = QUrl(text)
+        if q.scheme() == "":
+            q.setScheme("http")
+        self.browser.setUrl(q)
 
-    def update_dir(self, data):
-        from datetime import datetime
-        from utils import amount_format
-        from PyQt5.QtWidgets import QTableWidgetItem
+    def navigate_home(self):
+        self.browser.setUrl(QUrl(f"http://{DNS_NAME}"))
 
-        if not data:  # Если дата пустая, то отображаем пустой проводник
-            self.clientStoragesExplorer.setRowCount(0)
-            return
-        self.search.setText(data['address'] + '/' + data['id_object'])  # Изменение строки поиска по текущему объекту
-
-        self.clientStoragesExplorer.setRowCount(sum([(len(data[type])) for type in ['dirs', 'files']]))
-        row = 0
-        for type in ['dirs', 'files']:
-            for obj in sorted(data[type], key=lambda k: k['name']):  # Отображаем отсортированные директории и файлы
-                self.clientStoragesExplorer.setItem(row, 0, QTableWidgetItem(obj['id_object']))
-                self.clientStoragesExplorer.setItem(row, 1, QTableWidgetItem(obj['name']))
-                self.clientStoragesExplorer.setItem(row, 3,
-                                                    QTableWidgetItem({'dirs': 'Directory', 'files': 'File'}[type]))
-                if 'info' in obj.keys() and obj['info']:
-                    date = datetime.fromtimestamp(obj['info']['date']).strftime('%Y-%m-%d %H:%M:%S')
-                    self.clientStoragesExplorer.setItem(row, 2, QTableWidgetItem(date))
-                    self.clientStoragesExplorer.setItem(row, 4, QTableWidgetItem(amount_format(obj['info']['size'])))
-                elif obj['name'] == '..':
-                    self.clientStoragesExplorer.setItem(row, 2, QTableWidgetItem(''))
-                    self.clientStoragesExplorer.setItem(row, 4, QTableWidgetItem(''))
-                row += 1
-        self.clientStoragesExplorer.show()
-
-    def context_menu_open(self, position):
-        from PyQt5.QtWidgets import QAction, QMenu
-
-        if self.clientStoragesExplorer.itemAt(position):
-            # Если нажали на ячеку, то добавляем возможность скапировать путь к объекту
-            context_menu = QMenu(self.clientStoragesExplorer)
-            copyAction = QAction('Copy Path')
-            copyAction.triggered.connect(self.clientStoragesExplorer.copy_path)
-            context_menu.addAction(copyAction)
-            context_menu.exec_(self.clientStoragesExplorer.viewport().mapToGlobal(position))
-
-    def message_explorer(self, text):
-        if text == 'ok':
-            # Файл
-            self.message = self.Message('')
-            self.addLayout(self.message)
-            self.clientStoragesExplorer.hide()
-        else:
-            # Ошибка
-            self.clientStoragesExplorer.hide()
-            self.message = self.Message(text)
-            self.addLayout(self.message)
+    def update_urlbar(self, q):
+        self.search.setText(q.toString())
 
 
 class AllClientStorages(QDialog):
@@ -1450,6 +1457,7 @@ class AllClientStorages(QDialog):
         for key in LoadJsonFile('data/clients_manager/key').as_list():
             self.ui.listWidget.addItem(Wallet(key).address)
         self.ui.listWidget.doubleClicked.connect(self.selected_client_storage)
+        self.ui.listWidget.setFocus()
         if self.ui.listWidget.count():
             self.ui.listWidget.setCurrentRow(0)
 
@@ -1546,14 +1554,20 @@ class InfoBlockDialog(QDialog):
         self.setWindowFlags(Qt.CustomizeWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
 
-
         self.ui = Ui_InfoBlockDialog()
         self.ui.setupUi(self)
 
         self.ui.NumberBlockLabel.setText(str(data['number']))
         self.ui.HashBlockLabel.setText(data['hash_block'])
-        self.ui.RecipientPoolAddressLabel.setText(data['recipient_pool'])
+        self.ui.RecipientPoolAddressLabel.setText(data["recipient_pool"])
+        self.ui.RecipientPoolAddressLabel.setStyleSheet("QLabel {color: white; text-decoration: underline}"
+                                                        "QLabel:hover {font-weight: bold; color: rgb(85, 170, 255)}")
+        self.ui.RecipientPoolAddressLabel.installEventFilter(self)
         self.ui.RecipientFogNodeAddressLabel.setText(data['recipient_fog_node'])
+        self.ui.RecipientFogNodeAddressLabel.setStyleSheet("QLabel {color: white; text-decoration: underline}"
+                                                        "QLabel:hover {font-weight: bold; color: rgb(85, 170, 255)}")
+        self.ui.RecipientFogNodeAddressLabel.installEventFilter(self)
+
         self.ui.DateLabel.setText(datetime.fromtimestamp(data['date']).strftime('%Y-%m-%d %H:%M:%S'))
         self.ui.RecipientFogNodeAmountsLabel.setText(amount_format(data['amount_fog_node']))
         self.ui.RecipientPoolAmountLabel.setText(amount_format(data['amount_pool']))
@@ -1598,3 +1612,31 @@ class InfoBlockDialog(QDialog):
 
     def mousePressEvent(self, event):
         self.clickPosition = event.globalPos()
+
+    def eventFilter(self, source, event):
+        if event.type() == QEvent.MouseButtonPress:
+            print("The sender is:", source.text())
+        return super(InfoBlockDialog, self).eventFilter(source, event)
+
+
+class CreateFogNodes(QDialog):
+    def __init__(self):
+        super().__init__()
+        from interface import Ui_CreateFogNodesDialog
+        from utils import get_path
+        self.setWindowFlags(Qt.CustomizeWindowHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+
+        self.ui = Ui_CreateFogNodesDialog()
+        self.ui.setupUi(self)
+        self.ui.cancelButton.clicked.connect(self.reject)
+        self.ui.okButton.clicked.connect(self.accept)
+        self.ui.pushButtonPathOpen.clicked.connect(self.open_explorer)
+        self.ui.lineEditPath.setText(get_path('data'))
+        self.ui.spinBox.setMinimum(1)
+
+    def open_explorer(self):
+        from PyQt5.QtWidgets import QFileDialog
+        path = QFileDialog.getExistingDirectory(self, "Select a folder...", "/home",
+                                                QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks)
+        self.ui.lineEditPath.setText(path)

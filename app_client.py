@@ -2,8 +2,8 @@ from PyQt5.QtWidgets import QMainWindow, QFrame, QSystemTrayIcon, QMenu, QAction
 from clients_manager import DispatcherClientsManager
 from interface import *
 from utils import SaveJsonFile, LoadJsonFile
-from variables import POOL_ROOT_EXTERNAL_IP, PORT_DISPATCHER_CLIENTS_MANAGER
-import resources_rc
+from variables import POOL_ROOT_EXTERNAL_IP
+import resources
 from widgets import ClientStoragesExplorer, ClientStorageWidget
 
 
@@ -17,7 +17,7 @@ class AppClient(QMainWindow):
         from PyQt5.QtCore import Qt
         from widgets import FogNodesWidget, PoolWidget, SearchClientStorage
 
-        self.dispatcher = DispatcherClientsManager(PORT_DISPATCHER_CLIENTS_MANAGER)
+        self.dispatcher = DispatcherClientsManager()
         self.dispatcher.start()
 
         self.port_pool = port_pool
@@ -25,11 +25,11 @@ class AppClient(QMainWindow):
         self.port_fn = port_fn
 
 
-        self.setWindowIcon(QIcon(':/images/icon.png'))
+        self.setWindowIcon(QIcon(':/icons/icon-decloud.png'))
         # Init QSystemTrayIcon
         self.tray_icon = QSystemTrayIcon()
         self.tray_icon.activated.connect(self.on_click_tray_icon)
-        self.tray_icon.setIcon(QIcon(':/images/icon.png'))
+        self.tray_icon.setIcon(QIcon(':/icons/icon-decloud.png'))
         tray_menu = QMenu()
         tray_menu.triggered.connect(self.show)
         quit_action = QAction("Exit", self)
@@ -64,10 +64,10 @@ class AppClient(QMainWindow):
         self.addTabButton.setStyleSheet(""" QToolButton {
                                             background-repeat:none;
                                             background-position: center;
-                                            background-image: url(:/icons/icons/plus.svg);
+                                            background-image: url(:/icons/plus.svg);
                                             }
                                             QToolButton:hover {
-                                            background-image: url(:/icons/icons/plus(1).svg);
+                                            background-image: url(:icons/plus(1).svg);
                                             }
         
         """)
@@ -185,10 +185,10 @@ class AppClient(QMainWindow):
         from PyQt5.QtGui import QIcon
         if self.isMaximized():
             self.showNormal()
-            self.ui.restoreButton.setIcon(QIcon(u':/icons/icons/square.svg'))
+            self.ui.restoreButton.setIcon(QIcon(u':icons/square.svg'))
         else:
             self.showMaximized()
-            self.ui.restoreButton.setIcon(QIcon(u':/icons/icons/copy.svg'))
+            self.ui.restoreButton.setIcon(QIcon(u':icons/copy.svg'))
 
     def closeTab(self, ind):
         # Останавливаем поток обновления виджета ClientStoragesExplorer
@@ -271,7 +271,7 @@ class AppClient(QMainWindow):
         from wallet import Wallet
         import requests
         from widgets import SearchClientStorage, ClientStorageWidget
-        from variables import DNS_NAME, PORT_DISPATCHER_CLIENTS_MANAGER
+        from variables import DNS_NAME
 
         last_state = LoadJsonFile('data/state_app').as_dict()  # Загружаем предыдущий state
         # И адреса client storages
@@ -280,7 +280,7 @@ class AppClient(QMainWindow):
             if type(name_tab) == dict:  # Если тип dict, то вкладка - New tab
                 tabSearch = QFrame()
                 search = SearchClientStorage(self)
-                search.clientStoragesExplorer.change_path(name_tab['New tab'])  # Отображаем строку поиска из state
+                # search.clientStoragesExplorer.change_path(name_tab['New tab'])  # Отображаем строку поиска из state
                 search.changeSearchState.connect(self.save_state_app)
                 tabSearch.setLayout(search)
                 self.ui.tabWidget.addTab(tabSearch, 'New tab')
@@ -301,7 +301,7 @@ class AppClient(QMainWindow):
             else:
                 try:  # Адрес клиента
                     address = requests.get(
-                        f'http://{DNS_NAME}:{PORT_DISPATCHER_CLIENTS_MANAGER}/api/address_normal/{name_tab}').json()
+                        f'http://{DNS_NAME}/api/address_normal/{name_tab}').json()
                 except:
                     print(f'Клиента с именем {name_tab} не существует в сети')
                     continue
@@ -405,8 +405,6 @@ class AppClient(QMainWindow):
     # -------------- Обработчики сигналов FogNodesWidget --------------
 
     def open_client_storage(self, address):
-        from widgets import ClientStorageWidget
-
         index = self._get_index_name_tab(address)
         if index > -1:  # Если индекс != -1, то вкладка с названием address существует
             self.ui.tabWidget.setCurrentIndex(index)  # Переходим на существующую вкладку
@@ -418,7 +416,7 @@ class AppClient(QMainWindow):
             # Отображем полный баланс во вкладке
             if self.ui.tabWidget.tabText(self.ui.tabWidget.currentIndex()) == 'Fog Nodes':
                 clientStorageWidget.change_balance(int(self.fogNodesWidget.fogNodesTableWidget.item(
-                    self.fogNodesWidget.fogNodesTableWidget.currentRow(), 3).text()))
+                    self.fogNodesWidget.fogNodesTableWidget.currentRow(), 4).text()))
             tabClientStorages.setLayout(clientStorageWidget)
 
             self.ui.tabWidget.insertTab(self.ui.tabWidget.count() - 1, tabClientStorages, address)
@@ -438,62 +436,24 @@ class AppClient(QMainWindow):
         self.poolWidget.change_balance_pool(amount)
 
     def change_tab(self, index):
-        if self.ui.tabWidget.tabText(index) == 'Pool':
-            self.ui.sendByteExButton.show()
-            self.ui.allFogNodesButton.show()
+        name_tab = self.ui.tabWidget.tabText(index)
+        self.ui.sendByteExButton.setVisible(not(name_tab in ['New tab']))
+        self.ui.allFogNodesButton.setVisible(not(name_tab in ['Fog Nodes']))
+        self.ui.addFogNodeButton.setVisible(name_tab in ['Fog Nodes'])
+        self.ui.createFolderButton.setVisible(not(name_tab in ['Pool', 'Fog Nodes', 'New tab']))
+        self.ui.sendFileButton.setVisible(not(name_tab in ['Pool', 'Fog Nodes', 'New tab']))
+        self.ui.addNSButton.setVisible(not(name_tab in ['Pool', 'Fog Nodes', 'New tab']))
+        self.ui.openPoolButton.setVisible(bool(self.poolWidget._address_pool) and name_tab != 'Pool')
+        self.ui.openClientStorageButton.setVisible(name_tab == 'New tab' or
+                                (name_tab == 'Fog Nodes' and self.fogNodesWidget.fogNodesTableWidget.rowCount() > 0))
+        self.ui.createPoolButton.setVisible(name_tab == 'Fog Nodes' and not self.fogNodesWidget._address_pool and
+                                            self.fogNodesWidget.fogNodesTableWidget.rowCount() > 0)
 
-            self.ui.addFogNodeButton.hide()
+        if name_tab == 'Fog Nodes' and not self.fogNodesWidget._address_pool and \
+                self.fogNodesWidget.fogNodesTableWidget.rowCount() > 0:
             self.ui.openPoolButton.hide()
-            self.ui.createPoolButton.hide()
-            self.ui.openClientStorageButton.hide()
-            self.ui.createFolderButton.hide()
-            self.ui.sendFileButton.hide()
-            self.ui.addNSButton.hide()
-        elif self.ui.tabWidget.tabText(index) == 'Fog Nodes':
-            if not self.fogNodesWidget._address_pool and self.fogNodesWidget.fogNodesTableWidget.rowCount() > 0:
-                self.ui.createPoolButton.show()
-                self.ui.openPoolButton.hide()
-            elif self.fogNodesWidget._address_pool:
-                self.ui.createPoolButton.hide()
-                self.ui.openPoolButton.show()
-            else:
-                self.ui.createPoolButton.hide()
-                self.ui.openPoolButton.hide()
-
-            self.ui.openClientStorageButton.setVisible(self.fogNodesWidget.fogNodesTableWidget.rowCount() > 0)
-
-            self.ui.addFogNodeButton.show()
-            self.ui.sendByteExButton.show()
-
-            self.ui.allFogNodesButton.hide()
-            self.ui.createFolderButton.hide()
-            self.ui.sendFileButton.hide()
-            self.ui.addNSButton.hide()
-        elif self.ui.tabWidget.tabText(index) == 'New tab':
-            self.ui.allFogNodesButton.show()
-            if LoadJsonFile('data/pool/key').as_string():
-                self.ui.openPoolButton.show()
-            else:
-                self.ui.openPoolButton.hide()
-            self.ui.createPoolButton.hide()
-            self.ui.addFogNodeButton.hide()
-            self.ui.sendByteExButton.hide()
-            self.ui.openClientStorageButton.show()
+        elif name_tab == 'New tab':
             self.ui.openClientStorageButton.setText('    Create Client Storage')
-            self.ui.createFolderButton.hide()
-            self.ui.sendFileButton.hide()
-            self.ui.addNSButton.hide()
-        else:
-            self.ui.createFolderButton.show()
-            self.ui.sendFileButton.show()
-            self.ui.addNSButton.show()
-            self.ui.sendByteExButton.show()
-            self.ui.allFogNodesButton.show()
-            if LoadJsonFile('data/pool/key').as_string():
-                self.ui.openPoolButton.show()
-            else:
-                self.ui.openPoolButton.hide()
-            self.ui.createPoolButton.hide()
-            self.ui.addFogNodeButton.hide()
+            self.ui.openClientStorageButton.setToolTip('Create Client Storage')
 
-            self.ui.openClientStorageButton.hide()
+

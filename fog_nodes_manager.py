@@ -3,7 +3,7 @@ from dctp import ServerDCTP, ClientDCTP
 from fog_node import FogNode
 from utils import LoadJsonFile
 from wallet import Wallet
-
+from threading import Thread
 
 class WorkerProcess(Process):
     def __init__(self, process_name, port):
@@ -14,10 +14,10 @@ class WorkerProcess(Process):
         self.client = None
 
     def run(self):
-        self.client = ClientDCTP(self.process_name)
+        self.client = ClientDCTP(self.process_name, reconnect=True)
 
-        @self.client.method('add_fog_node')
-        def add_fog_node(request):
+        @self.client.method('start_fog_node')
+        def start_fog_node(request):
             self.fog_nodes[request.json['address']] = FogNode(self.client, request.json['private_key'])
             self.fog_nodes[request.json['address']].start()
 
@@ -73,40 +73,37 @@ class ManagerFogNodes():
         pass
 
     def load_fog_nodes(self):
+        wallets = []
         for key in LoadJsonFile('data/fog_nodes/key').as_list():
-            self.add_fog_node(key)
+            wallet = Wallet(key)
+            self.start_fog_node(wallet)
+            wallets.append(wallet)
+        return wallets
 
-    def add_fog_node(self, private_key=None):
-        from threading import Thread
+    def create_fog_node(self):
+        wallet = Wallet()
+        wallet.save_private_key('data/fog_nodes/key')
+        return wallet
 
-        wallet = Wallet(private_key)
-        if private_key is None:
-            wallet.save_private_key('data/fog_nodes/key')
-            for key in reversed(LoadJsonFile('data/fog_nodes/key').as_list()):
-                if Wallet(key).address == wallet.address:
-                    private_key = key
-                    break
+    def start_fog_node(self, wallet):
         self.process_worker[self._count_fog_nodes % self._cpu_count]['process_clients'].append(wallet.address)
         self._count_fog_nodes += 1
-        thread = Thread(target=self.request, args=[wallet.address, 'add_fog_node', {'private_key': private_key}])
+        thread = Thread(target=self.request_start_fog_node, args=[wallet.address, {'private_key': wallet.private_key}])
         thread.start()
 
-
-    def request(self, address, method, json={}):
+    def request_start_fog_node(self, address, json={}):
         from time import sleep
 
         for worker in self.process_worker:
             if address in worker['process_clients']:
-                json['address'] = address
-                while True:
-                    try:
-                        response = self._server_fog_nodes.request(id_worker=worker['process_name'],
-                                                          method=method, json=json)
-                        if response.status == 0:
-                            break
-                        sleep(1)
-                    except Exception as e:
-                        print(888888888889999999999999, e)
+                break
+        json['address'] = address
+        while True:
+            response = self._server_fog_nodes.request(id_worker=worker['process_name'],
+                                              method='start_fog_node', json=json)
+            if response.status == 0:
+                break
+            sleep(1)
 
     def close(self):
         for worker in self.process_worker:

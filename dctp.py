@@ -74,7 +74,6 @@ class ClientDCTP():
             for type_connect in self._type_connection:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.connect((self._ip, self._port))
-
                 # регистрируем клиента
                 json = _json.dumps({'id_worker': self._client_name, 'type': type_connect})
                 sock.send(len(json).to_bytes(4, "big") + bytes(json, 'utf-8'))
@@ -115,7 +114,8 @@ class ClientDCTP():
             length_json = int.from_bytes(sock.recv(4), 'big')
             length_data = int.from_bytes(sock.recv(4), 'big')
             return _json.loads(sock.recv(length_json).decode('utf-8')), sock.recv(length_data).decode('utf-8')
-        except:
+        except Exception as e:
+            print_info(324546546, e)
             return
 
     def request(self, method, id_client=None, json={}, data=b''):
@@ -142,38 +142,43 @@ class ClientDCTP():
 
     def _receiver(self, sock):
         while True:
-            # Ждем пока придет запрос от сервера
-            request = self._recv_data(sock)
+            try:
+                # Ждем пока придет запрос от сервера
+                request = self._recv_data(sock)
 
-            if request is None:
-                print(f'Client {self._client_name} connection break.')
-                return
+                if request is None:
+                    print(f'Client {self._client_name} connection break.')
+                    return
 
-            if self._stoping:
-                break
-            request = Request(*request)
-
-            data = b''
-            if request.method in self._dict_methods_call:
-                response = self._dict_methods_call[request.method](request)
-
-                if request.method == 'stop':
+                if self._stoping:
                     break
+                request = Request(*request)
 
-                # готовим ответ серверу
-                if type(response) == bytes:
-                    data = response
-                    response = None
+                data = b''
+                if request.method in self._dict_methods_call:
+                    response = self._dict_methods_call[request.method](request)
 
-                # Дополняем статус возврата, если его нет по умолчанию 0.
-                if response is None or 'status' not in response.keys():
-                    response = send_status_code(0, "success")
-            else:
-                response = send_status_code(100, "not method in request")
 
-            # отправляем ответ серверу
-            json = _json.dumps(response)
-            sock.send(len(json).to_bytes(4, "big") + len(data).to_bytes(4, "big") + bytes(json, 'utf-8') + data)
+                    if request.method == 'stop':
+                        break
+
+                    # готовим ответ серверу
+                    if type(response) == bytes:
+                        data = response
+                        response = None
+
+                    # Дополняем статус возврата, если его нет по умолчанию 0.
+                    if response is None or 'status' not in response.keys():
+                        response = send_status_code(0, "success")
+                else:
+                    response = send_status_code(100, "not method in request")
+
+                # отправляем ответ серверу
+                json = _json.dumps(response)
+                sock.send(len(json).to_bytes(4, "big") + len(data).to_bytes(4, "big") + bytes(json, 'utf-8') + data)
+            except Exception as e:
+                print_info(32323323232323, e)
+                pass
         print_info(f'Client {self._client_name} disconnect {self._ip}:{self._port}')
         self._close_socks()
 
@@ -319,12 +324,7 @@ class ServerDCTP(Thread):
                 request.update({'id_worker': id_worker, 'id_client': id_client})
 
                 self.count_current_work += 1
-                try:
-                    response = self._dict_methods_call[request['method']](Request(json=request, data=data))
-                except Exception as e:
-                    print(e)
-                    time.sleep(0.1)
-                    response = send_status_code(100, f'method {request["method"]} not ready or does not exist')
+                response = self._dict_methods_call[request['method']](Request(json=request, data=data))
                 self.count_current_work -= 1
 
                 if response is None:
@@ -334,12 +334,14 @@ class ServerDCTP(Thread):
                     response.update(send_status_code(0, "success"))
 
                 self._send_data(sock, json=response)
-            except:
+            except Exception as e:
+                print_info(3333333333333333333333333, e)
                 if id_worker in self._workers:
                     self.close_worker(id_worker)
-
+                print_info(5665656665665)
                 if 'on_disconnected' in self._dict_methods_call:
                     self._dict_methods_call['on_disconnected'](Request(json={"id_worker": id_worker}))
+                print_info(787878787878878)
                 break
 
     def request(self, id_worker, method, json={}, data=b'', timeout=10):
@@ -367,7 +369,8 @@ class ServerDCTP(Thread):
                                     sock.recv(length_data).decode('utf-8'))
                 sock.settimeout(None)
                 return response
-        except:
+        except Exception as e:
+            print(33333333333333333333333333333333333333333333333333333333333333333333333333333333, e)
             # если обрыв соединения
             if id_worker in self._workers:
                 self.close_worker(id_worker)

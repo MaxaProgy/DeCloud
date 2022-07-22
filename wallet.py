@@ -67,7 +67,7 @@ class Wallet:
 
     @property
     def private_key(self):
-        return self.private_key
+        return self._private_key
 
     @property
     def public_key(self):

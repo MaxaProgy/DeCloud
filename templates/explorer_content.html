@@ -1,0 +1,60 @@
+<div id="content">
+    <div class="row-items">
+        <div class="row">
+            {% for dir in dirs %}
+            {% if type_view == "list" %}
+            <div class="flex-column">
+                <a class="nav-link" href="javascript:ChangeDir('{{ dir.id_object }}', '{{ type_view }}')">{{ dir.name }}</a>
+            </div>
+            {% endif %}
+            {% if type_view == "sheet" %}
+            <div class="flex-column">
+                <a class="nav-link" href="javascript:ChangeDir('{{ dir.id_object }}', '{{ type_view }}')">{{ dir.name }}</a>
+            </div>
+            {% endif %}
+            {% if type_view == "pic" %}
+            <div class="flex-column">
+                <a class="nav-link" href="javascript:ChangeDir('{{ dir.id_object }}', '{{ type_view }}')">
+                    <div class="card" style="width: 19rem;">
+                        <img class="card-img-top card-image" width="150px" height="150px" src="{{ url_for('static', filename='dir.png') }}" alt="Item">
+                        <div class="card-body">
+                            <h5 class="card-title">{{ dir.name }}</h5>
+                        </div>
+                    </div>
+                </a>
+            </div>
+            {% endif %}
+            {% endfor %}
+        </div></div>
+
+    <div class="row-items">
+        <div class="row">
+            {% for file in files %}
+            {% if type_view == "list" %}
+            <div class="flex-column">
+                <a class="nav-link" href="javascript:SaveFile('{{ file.id_object }}', '{{ file.name }}')">{{ file.name }}</a>
+            </div>
+            {% endif %}
+            {% if type_view == "sheet" %}
+            <div class="flex-column">
+                <a class="nav-link" href="javascript:SaveFile('{{ file.id_object }}', '{{ file.name }}')">{{ file.name }}</a>
+            </div>
+            {% endif %}
+            {% if type_view == "pic" %}
+
+            <div class="flex-column">
+                <a class="nav-link" href="javascript:SaveFile('{{ file.id_object }}', '{{ file.name }}')">
+                    <div class="card" style="width: 19rem;">
+                        <img class="card-img-top card-image" width="150px" height="150px" src="{{ url_for('static', filename='file.jpg') }}" alt="Item">
+                        <div class="card-body">
+                            <h5 class="card-title">{{ file.name }}</h5>
+                        </div>
+                    </div>
+                </a>
+            </div>
+            {% endif %}
+            {% endfor %}
+        </div></div>
+</div>
+
+

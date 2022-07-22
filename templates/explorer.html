@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block head %}
+{% endblock %}
+
+{% block content %}
+    <ul class="nav nav-tabs" id="tab-example" role="tablist">
+        <li class="nav-item">
+            <a class="nav-link active" id="first-tab" href="javascript:ChangeDir('{{ id_object_cur }}', 'list')"
+               role="tab" aria-controls="first-tab-content"
+               aria-selected="true">Первая ссылка</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="second-tab" href="javascript:ChangeDir('{{ id_object_cur }}', 'sheet')"
+               role="tab" aria-controls="second-tab-content"
+               aria-selected="false">Вторая ссылка</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="third-tab" href="javascript:ChangeDir('{{ id_object_cur }}', 'pic')"
+               role="tab" aria-controls="third-tab-content"
+               aria-selected="false">Третья ссылка</a>
+        </li>
+    </ul>
+    <div class="input-group mb-3">
+        <div class="input-group-prepend">
+                <a href="javascript:ChangeClient()"
+                    class="btn btn-outline-secondary" type="button">Id client</a>
+            </div>
+        <input id="search_address" type="text" class="form-control" placeholder="" aria-label="" aria-describedby="basic-addon1">
+    </div>
+    <input id="download_or_preview" onclick="ChangeDownloadOrPreview()" class="btn btn-outline-secondary" type="button" value="Скачивать"></input>
+    {% include 'explorer_content.html' %}
+
+    <script type="text/javascript">
+
+        function ChangeDir(id_object, type_view) {
+            $.post("/" + "{{ address }}", { id_object: id_object, type_object: "dir", type_view: type_view},
+                function(data) {
+                    $("#content").html(data);
+            } );
+
+        }
+
+        function SaveFile(id_object, file_name) {
+            //$("#content").html('<a href="/{{ address }}?id_object=' + id_object + '&file_name=' + file_name + '">Ссылка</a>');
+
+            $.post("/" + "{{ address }}", { id_object: id_object, type_object: "file", file_name: file_name,
+                    state: document.getElementById('download_or_preview').value},
+                function(data) {
+                    if (document.getElementById('download_or_preview').value == "Скачивать") {
+                        const a = document.createElement('a');
+                        a.style.display = 'none';
+                        a.href = data;
+                        a.download = ''
+                        a.click();
+                    } else {
+                        if (!data == "") {
+                            $("#content").html(data);
+                        }
+                    }
+                }
+            );
+        }
+        function ChangeClient() {
+            document.location.href = "/" + document.getElementById('search_address').value
+        }
+        function ChangeDownloadOrPreview() {
+            if (document.getElementById('download_or_preview').value == "Скачивать") {
+                document.getElementById('download_or_preview').value = "Отображать";
+            }
+            else {
+                document.getElementById('download_or_preview').value = "Скачивать";
+            }
+        }
+    </script>
+{% endblock %}
+

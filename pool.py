@@ -166,8 +166,8 @@ class Pool(Process):
                     and server_CM.is_alive() and self._blockchain_thread.is_alive()):
                 try:
                     print_info(f'Error POOL {self._wallet.address}')
-                    print_info(f'FN={server_FN.is_alive()}')
-                    print_info(f'CM={server_CM.is_alive()}')
+                    print_info(f'FN={server_FN} {server_FN.is_alive()}')
+                    print_info(f'CM={server_CM} {server_CM.is_alive()}')
                     print_info(f'blockchain={self._blockchain_thread.is_alive()}')
                     print_info(f'flask={self.flask_thread}')
                     print_info(f'flask={self.flask_thread.is_alive()}')
@@ -313,11 +313,10 @@ if __name__ == '__main__':
 
     mfn = ManagerFogNodes(cpu_count=1)
     if not exists_path('data/pool/key'):
-        mfn.add_fog_node()
-        private_key = LoadJsonFile('data/fog_nodes/key').as_list()[-1]
-        SaveJsonFile('data/pool/key', private_key)
+        wallet = mfn.create_fog_node()
+        mfn.start_fog_node(wallet)
+        SaveJsonFile('data/pool/key', wallet.private_key)
     else:
-        mfn.load_fog_nodes()
-        private_key = LoadJsonFile('data/pool/key').as_string()
+        private_key = mfn.load_fog_nodes()[0].private_key
     pool = Pool(private_key=private_key, port_pool=args.port_pool, port_cm=args.port_cm, port_fn=args.port_fn)
     pool.start()

@@ -205,12 +205,6 @@ class FogNode(BaseFogNode, SyncTime, Thread):
             else:
                 return
 
-    def _connect_pool(self):
-        new_pool_params = self._get_connect_address_pool()
-        if new_pool_params:
-            hosts, _, _, port_fn = new_pool_params
-            self._pool_client.connect(self.select_host(*hosts), port_fn)
-
     def run(self):
         self._pool_client = ClientDCTP(self.wallet.address)
 
@@ -238,28 +232,18 @@ class FogNode(BaseFogNode, SyncTime, Thread):
             if exists_path(path):
                 return os.path.getsize(get_path(path))
 
+        self._preparing_replicas()
+        time.sleep(2)
         self._process_client.request(id_client=self._id_fog_node, method='current_state_fog_node',
                                      json={'state': 'connecting'})
-        self._connect_pool()
-        if not self.stoping:
-            self._process_client.request(id_client=self._id_fog_node, method='current_state_fog_node',
-                                         json={'state': 'preparing'})
-            self._preparing_replicas()
-            time.sleep(2)
-            try:
-                balance = self._pool_client.request('get_balance').json
-                self._process_client.request(id_client=self._id_fog_node, method='update_balance_fog_node',
-                                             json=balance)
-            except Exception as e:
-                print(66666666666666677777777777, e)
-            self._process_client.request(id_client=self._id_fog_node, method='current_state_fog_node',
-                                         json={'state': 'work'})
-
         self.sync_time()
         while True:
             date = self.sync_utcnow()
             for _ in range(60 + randrange(10)):
                 if self.stoping or not self._pool_client.is_connected():
+                    if self._address_pool_now_connect:
+                        self._process_client.request(id_client=self._id_fog_node, method='current_state_fog_node',
+                                                     json={'state': 'connecting'})
                     self._address_pool_now_connect = None
                     break
                 else:
@@ -269,7 +253,16 @@ class FogNode(BaseFogNode, SyncTime, Thread):
                 break
 
             if 10 < date.second < 50:
-                self._connect_pool()
+                new_pool_params = self._get_connect_address_pool()
+                if new_pool_params:
+                    hosts, _, _, port_fn = new_pool_params
+                    self._pool_client.connect(self.select_host(*hosts), port_fn)
+
+                    self._process_client.request(id_client=self._id_fog_node, method='update_balance_fog_node',
+                                             json=self._pool_client.request('get_balance').json)
+
+                    self._process_client.request(id_client=self._id_fog_node, method='current_state_fog_node',
+                                                 json={'state': 'work', 'ip_pool': self._pool_client._ip})
             else:
                 sleep(1)
 

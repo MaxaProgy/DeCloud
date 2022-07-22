@@ -1,6 +1,8 @@
 import multiprocessing
 import sys
 from argparse import ArgumentParser
+
+from utils import print_info
 from variables import POOL_PORT, POOL_FN_PORT, POOL_CM_PORT
 from register_domain_name import register_domain_name
 
@@ -46,7 +48,8 @@ if __name__ == '__main__':
                                 port_fn=params['--port_fn'])
                     pool.start()
                 if result[0] == 'create_fog_node':
-                    mfn.add_fog_node()
+                    wallet = mfn.create_fog_node()
+                    mfn.start_fog_node(wallet)
             else:
                 print('Неизвестная команда')
 
@@ -59,6 +62,7 @@ if __name__ == '__main__':
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("decloud")
         except:
             pass
+
         app = QApplication(sys.argv)
         client_manager = AppClient(args.port_pool, args.port_cm, args.port_fn)
         client_manager.show()
