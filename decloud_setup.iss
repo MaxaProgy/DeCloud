@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "DeCloud"
-#define MyAppVersion "1.1.1"
+#define MyAppVersion "1.0"
 #define MyAppExeName "decloud.exe"
 #define MyAppAssocName MyAppName + " File"
 #define MyAppAssocExt ".myp"
@@ -11,7 +11,7 @@
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application. Do not use the same AppId value in installers for other applications.
 ; (To generate a new GUID, click Tools | Generate GUID inside the IDE.)
-AppId={{FB45900E-9809-47A0-99B1-58E30D1F5070}
+AppId={{4C599D7C-2144-4A26-B14A-6E3E3D58EA79}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 ;AppVerName={#MyAppName} {#MyAppVersion}
@@ -19,12 +19,12 @@ DefaultDirName={autopf}\{#MyAppName}
 ChangesAssociations=yes
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
-LicenseFile=C:\IdeaProjects\PYTHON\DeCloud\LICENSE
+LicenseFile=C:\IdeaProjects\DeCloud\LICENSE
 ; Uncomment the following line to run in non administrative install mode (install for current user only.)
 ;PrivilegesRequired=lowest
-OutputDir=C:\IdeaProjects\PYTHON\DeCloud
+OutputDir=C:\IdeaProjects\DeCloud
 OutputBaseFilename=DeCloudSetup
-SetupIconFile=C:\IdeaProjects\PYTHON\DeCloud\decloud.ico
+SetupIconFile=C:\IdeaProjects\DeCloud\decloud.ico
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
@@ -37,8 +37,8 @@ Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "C:\IdeaProjects\PYTHON\DeCloud\dist\decloud\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion; Permissions: everyone-full
-Source: "C:\IdeaProjects\PYTHON\DeCloud\dist\decloud\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Permissions: everyone-full
+Source: "C:\IdeaProjects\DeCloud\dist\decloud\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "C:\IdeaProjects\DeCloud\dist\decloud\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Registry]
