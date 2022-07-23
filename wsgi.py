@@ -1,6 +1,7 @@
-from clients_manager import DispatcherClientsManager
-
+#from clients_manager import DispatcherClientsManager, app
+from aa import app
 if __name__ == '__main__':
-    dispatcher = DispatcherClientsManager()
-    dispatcher.start()
-    dispatcher.join()
+    app.run()
+    #dispatcher = DispatcherClientsManager(wsgi=True)
+    #dispatcher.start()
+    #dispatcher.join()

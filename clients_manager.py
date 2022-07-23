@@ -8,8 +8,7 @@ from queue import Queue
 import json
 from threading import Thread
 import requests
-from flask import render_template, url_for, send_from_directory, redirect
-
+from flask import render_template, url_for, send_from_directory, redirect, Flask
 from dctp import ClientDCTP
 from fog_node import BaseFogNode, SIZE_REPLICA
 from utils import LoadJsonFile, SaveJsonFile, get_path, is_ttl_file, get_random_pool_host, HostParams
@@ -152,14 +151,12 @@ class ClientStorageExplorer(BaseFogNode):
 
 
 class DispatcherClientsManager(HostParams, Thread):
-    def __init__(self):
-        from flask import Flask
+    def __init__(self, wsgi=False):
         HostParams.__init__(self)
         Process.__init__(self)
         self._session_keys = {}
         self._stoping = False
-        self.app = Flask(__name__)
-
+        self.wsgi = wsgi
 
     def run(self):
         self._garbage_collector = GarbageCollectorClientsManager()
@@ -196,7 +193,7 @@ class DispatcherClientsManager(HostParams, Thread):
                     if self.client_pool.is_connected():
                         return
                     time.sleep(0.1)
-        app = self.app
+
         @app.template_filter('file_extension')
         def file_extension_filter(s):
             lst = s.split('.')
@@ -467,8 +464,10 @@ class DispatcherClientsManager(HostParams, Thread):
                     dct_files_and_directories[{FileExplorer: 'files', DirectoryExplorer: 'dirs'}[type(child)]] += \
                         [{'name': child.name, 'id_object': child.hash, 'info': response['info']}]
                 return jsonify({'json': dct_files_and_directories})
-
-        app.run(host=DNS_NAME, port=80)
+        if self.wsgi:
+            app.run()
+        else:
+            app.run(host=DNS_NAME, port=80)
         # cm_server = WSGIServer(('127.0.0.1', self._port), app)
         # cm_server.serve_forever()
 
@@ -502,3 +501,5 @@ class GarbageCollectorClientsManager(Thread):
                             pass
                     sleep(0.1)
             sleep(1)
+
+app = Flask(__name__)
