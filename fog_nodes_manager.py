@@ -58,7 +58,6 @@ class ManagerFogNodes():
             self.on_change_balance(request)
 
         self._server_fog_nodes.start()
-
         for cpu in range(self._cpu_count):
             process_name = f'Process_FNM_{Wallet().address}'
             self.process_worker.append({'process_name': process_name, 'process_clients': []})

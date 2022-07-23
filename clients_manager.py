@@ -153,10 +153,13 @@ class ClientStorageExplorer(BaseFogNode):
 
 class DispatcherClientsManager(HostParams, Thread):
     def __init__(self):
+        from flask import Flask
         HostParams.__init__(self)
         Process.__init__(self)
         self._session_keys = {}
         self._stoping = False
+        self.app = Flask(__name__)
+
 
     def run(self):
         self._garbage_collector = GarbageCollectorClientsManager()
@@ -182,9 +185,7 @@ class DispatcherClientsManager(HostParams, Thread):
         self._stoping = True
 
     def run_flask(self):
-        from flask import Flask, request, jsonify, Response, abort
-
-        app = Flask(__name__)
+        from flask import request, jsonify, Response, abort
 
         def get_address_normal(address):
             while True:
@@ -195,7 +196,7 @@ class DispatcherClientsManager(HostParams, Thread):
                     if self.client_pool.is_connected():
                         return
                     time.sleep(0.1)
-
+        app = self.app
         @app.template_filter('file_extension')
         def file_extension_filter(s):
             lst = s.split('.')

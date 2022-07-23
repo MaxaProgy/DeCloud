@@ -19,6 +19,7 @@ class AppClient(QMainWindow):
 
         self.dispatcher = DispatcherClientsManager()
         self.dispatcher.start()
+        print(self.dispatcher.app)
 
         self.port_pool = port_pool
         self.port_cm = port_cm
