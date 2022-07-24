@@ -240,8 +240,9 @@ class DispatcherClientsManager(HostParams, Thread):
                 if 'error' in response or not response:
                     return abort(404)
                 for item in response['json']['dirs'] + response['json']['files']:
-                    item['info']['date'] = datetime.fromtimestamp(item['info']['date']).strftime('%Y-%m-%d %H:%M:%S')
-                    item['info']['size'] = amount_format(item['info']['size'])
+                    if item['info']:
+                        item['info']['date'] = datetime.fromtimestamp(item['info']['date']).strftime('%Y-%m-%d %H:%M:%S')
+                        item['info']['size'] = amount_format(item['info']['size'])
 
                 return render_template('explorer.html', dirs=response['json']['dirs'],
                                        files=response['json']['files'], address=address, id_object_cur=None,

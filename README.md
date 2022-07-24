@@ -63,6 +63,10 @@ ByteEx
 ![Image alt](static_readme/image_7_readme.jpg)
 ![Image alt](static_readme/image_8_readme.jpg)
 ![Image alt](static_readme/image_9_readme.jpg)
+![Image alt](static_readme/image_10_readme.jpg)
+![Image alt](static_readme/image_11_readme.jpg)
+![Image alt](static_readme/image_12_readme.jpg)
+
 _____
 #### Установка и запуск Pool на Unix-подобных (Linux) системах с помощью Docker
 

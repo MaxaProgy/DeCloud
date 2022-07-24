@@ -39,9 +39,15 @@
                         <th style="text-align: left;">
                             <a style="padding: 0;" class="obj" href="javascript:ChangeDir('{{ dir.id_object }}', 'table')">{{ dir.name }}</a>
                         </th>
-                        <th>{{ dir.info.date }}</th>
-                        <th>Folder</th>
-                        <th>{{ dir.info.size }}</th>
+                        {% if dir.name != '..' %}
+                            <th>{{ dir.info.date }}</th>
+                            <th>Folder</th>
+                            <th>{{ dir.info.size }}</th>
+                        {% else %}
+                            <th></th>
+                            <th>Folder</th>
+                            <th></th>
+                        {% endif %}
                     </tr>
                 {% endfor %}
                 {% for file in files %}
