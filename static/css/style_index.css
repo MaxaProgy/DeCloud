@@ -5,9 +5,16 @@
     font-family: 'arial', sans-serif;
 }
 
+a {
+    text-decoration: none !important;
+}
+a:hover {
+    color: #679ed1 !important;
+    text-decoration: underline !important;
+}
+
 nav {
     -webkit-box-align: center;
-    position: fixed;
     width: 100%;
     height: 75px;
     display: flex;
@@ -15,7 +22,7 @@ nav {
 
 }
 
-nav .download {
+nav .navLink {
     color: #fff;
     padding: 20px;
 }
@@ -25,7 +32,7 @@ section {
     display: flex;
     justify-content: center;
     align-items: center;
-    min-height: 100vh;
+    min-height: 80vh;
 }
 section .main {
     width: 580px;
@@ -59,4 +66,60 @@ section .main .searchBox .icons {
     justify-content: space-between;
     align-items: center;
     pointer-events: none;
+}
+
+.social-icons {
+    display: flex;
+    list-style: none;
+    margin: 1rem;
+    padding-left: 0;
+}
+.social-icons>li {
+    margin-left: 0.25rem;
+    margin-right: 0.25rem;
+}
+.social-icons a {
+    position: relative;
+    display: block;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    transition: background-color .3s ease-in-out;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: .25rem;
+}
+.social-icons a:hover {
+    filter: drop-shadow(0px 4px 4px rgba(0, 0, 0, 0.5));
+}
+.social-icons a::before {
+    content: "";
+    position: absolute;
+    width: 1.8rem;
+    height: 1.8rem;
+    left: .65rem;
+    top: .65rem;
+    background: transparent no-repeat center center;
+    background-size: 100% 100%;
+}
+
+.social-icons .social-icon-vk::before {
+    background-image: url("/static/img/vk.svg");
+}
+.social-icons .social-icon-telegram::before {
+    background-image: url("/static/img/telegram.svg");
+}
+
+.social-icons .contact-icon::before {
+    width: 5.2rem;
+    height: 5.2rem;
+
+}
+.social-icons .contact-icon {
+    display: inline-block;
+    margin: 6px;
+    max-width: 25%;
+    width: 5.2rem;
+    height: 5.2rem;
 }

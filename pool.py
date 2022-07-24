@@ -316,6 +316,7 @@ if __name__ == '__main__':
         wallet = mfn.create_fog_node()
         mfn.start_fog_node(wallet)
         SaveJsonFile('data/pool/key', wallet.private_key)
+        private_key = wallet.private_key
     else:
         private_key = mfn.load_fog_nodes()[0].private_key
     pool = Pool(private_key=private_key, port_pool=args.port_pool, port_cm=args.port_cm, port_fn=args.port_fn)
