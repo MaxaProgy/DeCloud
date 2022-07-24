@@ -6,7 +6,7 @@ from PyQt5.QtCore import Qt
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         #MainWindow.setObjectName("MainWindow")
-        MainWindow.resize(1132, 644)
+        MainWindow.resize(1400, 800)
         MainWindow.setLayoutDirection(QtCore.Qt.LeftToRight)
         MainWindow.setStyleSheet("* {\n"
                                  "    border: none;\n"

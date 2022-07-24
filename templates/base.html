@@ -1,27 +1,15 @@
-<!doctype html>
-<html lang="ru">
-    <head>
-        <!-- Обязательные метатеги -->
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="/static/css/style_index.css">
+    <script src="/static/js/jquery-3.6.0.min.js"></script>
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <title>DeCloud</title>
+    {% block head %}{% endblock %}
+</head>
 
-        <!-- Bootstrap CSS -->
-
-        <link rel="stylesheet" href="static/css/bootstrap.css">
-        <script src="static/js/jquery-3.6.0.min.js"></script>
-        <script src="static/js/bootstrap.bundle.min.js"></script>
-        <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
-        <title>Decloud</title>
-
-        {% block head %}{% endblock %}
-    </head>
-
-    <body>
-        <div>
-            <header>
-
-            </header>
-            {% block content %}{% endblock %}
-        </div>
-    </body>
+<body style="background-color: #1f232a">
+        {% block content %}{% endblock %}
+</body>
 </html>

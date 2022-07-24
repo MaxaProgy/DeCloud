@@ -11,4 +11,5 @@ services:
       - 9200:9200
     volumes:
       - ./data:/usr/src/app/data
+    command: python3.7 pool.py
     network_mode: host

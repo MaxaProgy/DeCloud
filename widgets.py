@@ -1187,7 +1187,8 @@ class FogNodesWidget(QHBoxLayout):
                         # Если нода является пулом, то меняем и баланс пула
                         self.changeBalancePool.emit(request.json['amount'])
                     self.changeBalanceClientsStorage.emit(self.fogNodesTableWidget.item(i, 0).text(), request.json['amount'])
-                    self.fogNodesTableWidget.repaint()
+                    self.fogNodesTableWidget.hide()
+                    self.fogNodesTableWidget.show()
                     return
 
     def on_change_state(self, request):

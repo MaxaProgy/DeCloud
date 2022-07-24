@@ -6,7 +6,7 @@ import os
 from time import sleep
 from threading import Thread
 from dctp import ClientDCTP
-from utils import get_path, exists_path, get_size_file, load_pools_host, save_pools_host, SyncTime
+from utils import get_path, exists_path, get_size_file, load_pools_host, save_pools_host, SyncTime, print_info
 from wallet import Wallet
 
 SIZE_REPLICA = 1024 ** 2
@@ -258,7 +258,7 @@ class FogNode(BaseFogNode, SyncTime, Thread):
                     hosts, _, _, port_fn = new_pool_params
                     self._pool_client.connect(self.select_host(*hosts), port_fn)
 
-                    print(self._pool_client.request('get_balance').json)
+                    print_info(self._pool_client.request('get_balance').json)
                     self._process_client.request(id_client=self._id_fog_node, method='update_balance_fog_node',
                                              json=self._pool_client.request('get_balance').json)
 

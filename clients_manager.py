@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*
 import mimetypes
 import os
+from datetime import datetime
 import time
 from time import sleep
 from multiprocessing import Process
@@ -11,7 +12,7 @@ import requests
 from flask import render_template, url_for, send_from_directory, redirect, Flask
 from dctp import ClientDCTP
 from fog_node import BaseFogNode, SIZE_REPLICA
-from utils import LoadJsonFile, SaveJsonFile, get_path, is_ttl_file, get_random_pool_host, HostParams
+from utils import LoadJsonFile, SaveJsonFile, get_path, is_ttl_file, get_random_pool_host, HostParams, amount_format
 from wallet import Wallet
 from variables import DNS_NAME
 
@@ -195,6 +196,10 @@ class DispatcherClientsManager(HostParams, Thread):
                         return
                     time.sleep(0.1)
 
+        @app.errorhandler(404)
+        def error404(error):
+            return render_template('error.html', message='Object not found 💔')
+
         @app.template_filter('file_extension')
         def file_extension_filter(s):
             lst = s.split('.')
@@ -208,7 +213,11 @@ class DispatcherClientsManager(HostParams, Thread):
         @app.route('/', methods=['GET', 'POST'])
         def main():
             if request.method == 'POST':
-                return redirect(f'/{request.form["input"]}')
+                address = get_address_normal(request.form["input"])
+                if address:
+                    return redirect(f'/{address}')
+                return render_template('index.html', message='Object not found 💔')
+
             else:
                 return render_template('index.html')
 
@@ -220,7 +229,7 @@ class DispatcherClientsManager(HostParams, Thread):
 
             address = get_address_normal(address)
             if not address:
-                return render_template('index.html', message='Object not found 💔')
+                return abort(404)
 
             if request.method == "GET":
                 type_view = request.args.get('type_view')
@@ -230,17 +239,21 @@ class DispatcherClientsManager(HostParams, Thread):
                 response = requests.get(f'http://{DNS_NAME}/api/get_object/{address}').json()
                 if 'error' in response or not response:
                     return abort(404)
+                for item in response['json']['dirs'] + response['json']['files']:
+                    item['info']['date'] = datetime.fromtimestamp(item['info']['date']).strftime('%Y-%m-%d %H:%M:%S')
+                    item['info']['size'] = amount_format(item['info']['size'])
+
                 return render_template('explorer.html', dirs=response['json']['dirs'],
                                        files=response['json']['files'], address=address, id_object_cur=None,
                                        type_view=type_view)
             else:
                 # if not all(key in request.form.keys() for key in ['id_object', 'type_object', 'type_view']):
                 # abort(400)
-
+                print(request.form['id_object'])
                 if request.form['type_object'] == 'dir':
                     response = requests.get(f'http://{DNS_NAME}/api/get_object/{address}',
                                             params={'id_object': request.form['id_object']}).json()
-                    return render_template('explorer_content.html', dirs=response['json']['dirs'],
+                    return render_template('explorer.html', dirs=response['json']['dirs'],
                                            files=response['json']['files'], address=address,
                                            id_object_cur=request.form['id_object'], type_view=request.form['type_view'])
                 elif request.form['type_object'] == 'file':

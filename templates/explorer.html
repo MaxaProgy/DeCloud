@@ -4,32 +4,87 @@
 {% endblock %}
 
 {% block content %}
-    <ul class="nav nav-tabs" id="tab-example" role="tablist">
-        <li class="nav-item">
-            <a class="nav-link active" id="first-tab" href="javascript:ChangeDir('{{ id_object_cur }}', 'list')"
-               role="tab" aria-controls="first-tab-content"
-               aria-selected="true">Первая ссылка</a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link" id="second-tab" href="javascript:ChangeDir('{{ id_object_cur }}', 'sheet')"
-               role="tab" aria-controls="second-tab-content"
-               aria-selected="false">Вторая ссылка</a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link" id="third-tab" href="javascript:ChangeDir('{{ id_object_cur }}', 'pic')"
-               role="tab" aria-controls="third-tab-content"
-               aria-selected="false">Третья ссылка</a>
-        </li>
-    </ul>
-    <div class="input-group mb-3">
-        <div class="input-group-prepend">
-                <a href="javascript:ChangeClient()"
-                    class="btn btn-outline-secondary" type="button">Id client</a>
+<div id="content">
+    <div class="tabs">
+        <input type="radio" name="tab-btn" id="tab-btn-1" value="" checked>
+        <label for="tab-btn-1">Список</label>
+        <input type="radio" name="tab-btn" id="tab-btn-2" value=""  {{ checked if type_view == 'table'}}>
+        <label for="tab-btn-2">Таблица</label>
+        <input type="radio" name="tab-btn" id="tab-btn-3" value=""  {{ checked if type_view == 'pic'}}>
+        <label for="tab-btn-3">Значки</label>
+
+        <div id="list">
+            <ul style="list-style-image: url('/static/img/folder.svg'); width: 100%;">
+            {% for dir in dirs %}
+                <li><a class="obj" href="javascript:ChangeDir('{{ dir.id_object }}', 'list')">{{ dir.name }}</a></li>
+            {% endfor %}
+            </ul><ul style="list-style-image: url('/static/img/file.svg')">
+            {% for file in files %}
+                <li><a class="obj" href="javascript:SaveFile('{{ file.id_object }}', '{{ file.name }}')">{{ file.name }}</a></li>
+            {% endfor %}
+            </ul>
+        </div>
+        <div id="table">
+            <table>
+                <tr style="padding-bottom: 5px">
+                    <th></th>
+                    <th class="labels" style="text-align: left;">Name</th>
+                    <th class="labels">Date</th>
+                    <th class="labels">Type</th>
+                    <th class="labels">Size</th>
+                </tr>
+                {% for dir in dirs %}
+                    <tr>
+                        <th><img  style="width: 25px; height: auto" src="/static/img/folder.svg"></th>
+                        <th style="text-align: left;">
+                            <a style="padding: 0;" class="obj" href="javascript:ChangeDir('{{ dir.id_object }}', 'table')">{{ dir.name }}</a>
+                        </th>
+                        <th>{{ dir.info.date }}</th>
+                        <th>Folder</th>
+                        <th>{{ dir.info.size }}</th>
+                    </tr>
+                {% endfor %}
+                {% for file in files %}
+                    <tr>
+                        <th><img  style="width: 25px; height: auto" src="/static/img/file.svg"></th>
+                        <th style="text-align: left;">
+                            <a style="padding: 0" class="obj" href="javascript:SaveFile('{{ file.id_object }}', '{{ file.name }}')">{{ file.name }}</a>
+                        </th>
+                        <th>{{ file.info.date }}</th>
+                        <th>File</th>
+                        <th>{{ file.info.size }}</th>
+                    </tr>
+                {% endfor %}
+            </table>
+        </div>
+        <div id="pic">
+            <div style="display: -webkit-box">
+                {% for dir in dirs %}
+                    <div>
+                        <a href="javascript:ChangeDir('{{ dir.id_object }}', 'pic')">
+                            <div class="card">
+                                <img width="150px" height="150px" src="/static/img/folder.svg" alt="Item">
+                                <h5>{{ dir.name }}</h5>
+                            </div>
+                        </a>
+                    </div>
+                {% endfor %}
+                {% for file in files %}
+                    <div>
+                        <a href="javascript:SaveFile('{{ file.id_object }}', '{{ file.name }}')">
+                            <div class="card">
+                                <img width="150px" height="150px" src="/static/img/file.svg" alt="Item">
+                                <h5>{{ file.name }}</h5>
+                            </div>
+                        </a>
+                    </div>
+                {% endfor %}
             </div>
-        <input id="search_address" type="text" class="form-control" placeholder="" aria-label="" aria-describedby="basic-addon1">
+        </div>
     </div>
-    <input id="download_or_preview" onclick="ChangeDownloadOrPreview()" class="btn btn-outline-secondary" type="button" value="Скачивать"></input>
-    {% include 'explorer_content.html' %}
+</div>
+
+
 
     <script type="text/javascript">
 

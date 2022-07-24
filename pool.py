@@ -16,7 +16,6 @@ class Pool(Process):
     def __init__(self, private_key, port_pool=POOL_PORT, port_cm=POOL_CM_PORT, port_fn=POOL_FN_PORT, port_app=None):
         super().__init__()
         self._wallet = Wallet(private_key)
-        SaveJsonFile('data/pool/key', private_key)
         self._port_cm = port_cm
         self._port_fn = port_fn
         self._port_app = port_app
@@ -318,6 +317,6 @@ if __name__ == '__main__':
         SaveJsonFile('data/pool/key', wallet.private_key)
         private_key = wallet.private_key
     else:
-        private_key = mfn.load_fog_nodes()[0].private_key
+        private_key = LoadJsonFile('data/pool/key').as_string()
     pool = Pool(private_key=private_key, port_pool=args.port_pool, port_cm=args.port_cm, port_fn=args.port_fn)
     pool.start()

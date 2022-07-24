@@ -8,6 +8,7 @@
 a {
     text-decoration: none !important;
 }
+
 a:hover {
     color: #679ed1 !important;
     text-decoration: underline !important;
@@ -26,6 +27,7 @@ nav .navLink {
     color: #fff;
     padding: 20px;
 }
+
 section {
     position: relative;
     width: 100%;
@@ -34,6 +36,7 @@ section {
     align-items: center;
     min-height: 80vh;
 }
+
 section .main {
     width: 580px;
     display: flex;
@@ -74,10 +77,12 @@ section .main .searchBox .icons {
     margin: 1rem;
     padding-left: 0;
 }
+
 .social-icons>li {
     margin-left: 0.25rem;
     margin-right: 0.25rem;
 }
+
 .social-icons a {
     position: relative;
     display: block;
@@ -90,9 +95,11 @@ section .main .searchBox .icons {
     height: 2.5rem;
     border-radius: .25rem;
 }
+
 .social-icons a:hover {
     filter: drop-shadow(0px 4px 4px rgba(0, 0, 0, 0.5));
 }
+
 .social-icons a::before {
     content: "";
     position: absolute;
@@ -107,6 +114,7 @@ section .main .searchBox .icons {
 .social-icons .social-icon-vk::before {
     background-image: url("/static/img/vk.svg");
 }
+
 .social-icons .social-icon-telegram::before {
     background-image: url("/static/img/telegram.svg");
 }
@@ -122,4 +130,119 @@ section .main .searchBox .icons {
     max-width: 25%;
     width: 5.2rem;
     height: 5.2rem;
+}
+
+footer {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+}
+
+
+.tabs {
+    font-size: 0;
+    width: 100%;
+    color: #fff;
+}
+
+.tabs>input[type="radio"] {
+    display: none;
+}
+
+.tabs>div {
+    /* скрыть контент по умолчанию */
+    display: none;
+    padding: 10px 10%;
+    font-size: 16px;
+}
+
+/* отобразить контент, связанный с вабранной радиокнопкой (input type="radio") */
+#tab-btn-1:checked~#list,
+#tab-btn-2:checked~#table,
+#tab-btn-3:checked~#pic {
+    display: block;
+}
+
+.obj {
+    height: 10px;
+    color: #fff;
+    padding: 10px;
+    vertical-align: middle;
+    line-height:30px;
+}
+
+.obj:hover {
+    text-decoration: none !important;
+    color: #fff !important;
+}
+
+.tabs>label {
+    background-color: #16191d;
+    display: inline-block;
+    text-align: center;
+    vertical-align: middle;
+    user-select: none;
+    padding: 10px;
+    font-size: 16px;
+    line-height: 1.5;
+    transition: color 0.15s ease-in-out, background-color 0.15s ease-in-out;
+    cursor: pointer;
+    position: relative;
+    top: 1px;
+}
+
+.tabs>label:not(:first-of-type) {
+    border-left: none;
+}
+
+.tabs>input[type="radio"]:checked+label {
+    background-color: #2c313c;
+}
+
+#list li:hover {
+    border-top-left-radius: 10px;
+    border-bottom-left-radius: 10px;
+    background-color: #55aaff;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: center;
+}
+
+th, td {
+    padding: 0 15px;
+    font-weight: 400;
+    border-style: solid;
+    border-width: 0 0 2px 0;
+    border-color: #679ed1;
+}
+td {
+    background: #D8E6F3;
+}
+tr:hover {
+    border-top-left-radius: 10px;
+    border-bottom-left-radius: 10px;
+    background-color: #55aaff;
+}
+
+.labels {
+    font-size: 17px;
+    font-weight: 700;
+    padding-bottom: 10px;
+}
+
+.card {
+    width: 180px;
+    height: 200px;
+    padding: 10px;
+}
+.card:hover {
+    background-color: rgba(85, 170, 255, 0.42);
+}
+.card h5 {
+    text-decoration: none !important;
+    font-size: 16px;
+    color: #fff;
 }
