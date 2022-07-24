@@ -24,6 +24,6 @@
     <file>icons/check.svg</file>
     <file>icons/align-justify.svg</file>
     <file>icons/server.svg</file>
-    <file>icon.png</file>
+    <file>icons/icon-decloud.png</file>
   </qresource>
 </RCC>

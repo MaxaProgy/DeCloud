@@ -4,6 +4,21 @@
     box-sizing: border-box;
     font-family: 'arial', sans-serif;
 }
+
+nav {
+    -webkit-box-align: center;
+    position: fixed;
+    width: 100%;
+    height: 75px;
+    display: flex;
+    justify-content: flex-end;
+
+}
+
+nav .download {
+    color: #fff;
+    padding: 20px;
+}
 section {
     position: relative;
     width: 100%;

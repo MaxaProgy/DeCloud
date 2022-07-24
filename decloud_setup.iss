@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "DeCloud"
-#define MyAppVersion "1.0"
+#define MyAppVersion "0.1.1"
 #define MyAppExeName "decloud.exe"
 #define MyAppAssocName MyAppName + " File"
 #define MyAppAssocExt ".myp"
@@ -19,12 +19,12 @@ DefaultDirName={autopf}\{#MyAppName}
 ChangesAssociations=yes
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
-LicenseFile=C:\IdeaProjects\DeCloud\LICENSE
+LicenseFile=C:\IdeaProjects\PYTHON\DeCloud\LICENSE
 ; Uncomment the following line to run in non administrative install mode (install for current user only.)
 ;PrivilegesRequired=lowest
-OutputDir=C:\IdeaProjects\DeCloud
+OutputDir=C:\IdeaProjects\PYTHON\DeCloud\static\download\
 OutputBaseFilename=DeCloudSetup
-SetupIconFile=C:\IdeaProjects\DeCloud\decloud.ico
+SetupIconFile=C:\IdeaProjects\PYTHON\DeCloud\decloud.ico
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
@@ -37,8 +37,8 @@ Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "C:\IdeaProjects\DeCloud\dist\decloud\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\IdeaProjects\DeCloud\dist\decloud\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "C:\IdeaProjects\PYTHON\DeCloud\dist\decloud\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "C:\IdeaProjects\PYTHON\DeCloud\dist\decloud\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Registry]

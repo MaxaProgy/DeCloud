@@ -217,6 +217,11 @@ class DispatcherClientsManager(HostParams, Thread):
             if address == 'favicon.ico':
                 return send_from_directory(os.path.join(app.root_path, 'static'),
                                            'favicon.ico', mimetype='image/vnd.microsoft.icon')
+
+            address = get_address_normal(address)
+            if not address:
+                return render_template('index.html', message='Object not found 💔')
+
             if request.method == "GET":
                 type_view = request.args.get('type_view')
                 if type_view is None:
@@ -235,7 +240,6 @@ class DispatcherClientsManager(HostParams, Thread):
                 if request.form['type_object'] == 'dir':
                     response = requests.get(f'http://{DNS_NAME}/api/get_object/{address}',
                                             params={'id_object': request.form['id_object']}).json()
-                    print(response)
                     return render_template('explorer_content.html', dirs=response['json']['dirs'],
                                            files=response['json']['files'], address=address,
                                            id_object_cur=request.form['id_object'], type_view=request.form['type_view'])

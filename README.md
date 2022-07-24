@@ -72,14 +72,19 @@ _____
 1. Скачайте архив по ссылке и распакуйте его в нужной директории: 
 
 `https://github.com/MariaZyryanova72/DeCloud/archive/refs/heads/develop.zip`
+
 2. При необходимости зайти и установить python  https://www.python.org/downloads/release/python-379/
+
 3. Откройте cmd.exe (Меню Пуск -> Служебные -> Командная строка)
+
 4. Перейдите в ту папку, где хотите установить приложение 
    
    ` cd <путь к директории распакованного архива>`
+   
 5. Установка виртуального окружения
  
     `python -m venv venv`
+    
 6. Запуск окружения
     
     `venv\Scripts\activate.bat`
