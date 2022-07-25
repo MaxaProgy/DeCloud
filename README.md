@@ -76,8 +76,19 @@ _____
 4. `cd DeCloud`
 5. `sudo git checkout develop`
 6. `source install_docker.sh`
-   
+ 
+#### Установка и запуск Pool на Unix-подобных (Linux) системах с помощью Python в виртуальном окружении
+ 
+1. `sudo apt-get update`
+2. `sudo apt install git -y`
+3. `sudo git clone https://github.com/MariaZyryanova72/DeCloud.git`
+4. `cd DeCloud`
+5. `sudo git checkout develop`
+6. `source install.sh`
+7. `source decloud.sh` 
+ 
 #### Установка и запуск приложения на Windows с помощью Python в виртуальном окружении
+
 1. Скачайте архив по ссылке и распакуйте его в нужной директории: 
 
 `https://github.com/MariaZyryanova72/DeCloud/archive/refs/heads/develop.zip`
@@ -109,7 +120,7 @@ _____
 #### Установка и запуск приложения на Windows с помощью установщика
 
 1. Скачайте по ссылке установщик и запустите его
-    [Установщик тут ;)](DeCloudSetup.exe)
+    [Установщик тут ;)](http://decloud.maxa-progy.ru)
 
 
 [https://www.youtube.com/watch?v=fnR_V6eHojM&list=PLsdSRcrzEwaOpplGSrmqXscgpTgKfCKCN]: https://www.youtube.com/watch?v=fnR_V6eHojM&list=PLsdSRcrzEwaOpplGSrmqXscgpTgKfCKCN
