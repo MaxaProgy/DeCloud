@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "DeCloud"
-#define MyAppVersion "0.1.2"
+#define MyAppVersion "0.1.5"
 #define MyAppExeName "decloud.exe"
 #define MyAppAssocName MyAppName + " File"
 #define MyAppAssocExt ".myp"
@@ -22,7 +22,7 @@ AllowNoIcons=yes
 LicenseFile=C:\IdeaProjects\PYTHON\DeCloud\LICENSE
 ; Uncomment the following line to run in non administrative install mode (install for current user only.)
 ;PrivilegesRequired=lowest
-OutputDir=C:\IdeaProjects\PYTHON\DeCloud\static\download\
+OutputDir=C:\IdeaProjects\PYTHON\DeCloud\
 OutputBaseFilename=DeCloudSetup
 SetupIconFile=C:\IdeaProjects\PYTHON\DeCloud\decloud.ico
 Compression=lzma

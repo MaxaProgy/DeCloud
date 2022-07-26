@@ -25,5 +25,10 @@
     <file>icons/align-justify.svg</file>
     <file>icons/server.svg</file>
     <file>icons/icon-decloud.png</file>
+    <file>static/arrow-000.png</file>
+    <file>static/arrow-180.png</file>
+    <file>static/arrow-circle-315.png</file>
+    <file>static/home.png</file>
+    <file>static/favicon.ico</file>
   </qresource>
 </RCC>
