@@ -324,7 +324,7 @@ class DispatcherClientsManager(HostParams, Thread):
             except:
                 abort(404)
 
-        @app.route('/api/get_balance/<address>', methods=['GET'])
+        @app.route('/api/get_balance/<string:address>', methods=['GET'])
         def get_balance(address):
             try:
                 return jsonify(
@@ -332,7 +332,7 @@ class DispatcherClientsManager(HostParams, Thread):
             except:
                 abort(404)
 
-        @app.route('/api/get_free_balance/<address>', methods=['GET'])
+        @app.route('/api/get_free_balance/<string:address>', methods=['GET'])
         def get_free_balance(address):
             try:
                 return jsonify(requests.get(

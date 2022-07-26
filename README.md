@@ -68,6 +68,8 @@ ByteEx
 ![Image alt](static_readme/image_12_readme.jpg)
 
 _____
+[Документация и взаимодействие с проложением](Documentation.pdf)
+_____
 #### Установка и запуск Pool на Unix-подобных (Linux) системах с помощью Docker
 
 1. `sudo apt-get update`
@@ -77,7 +79,7 @@ _____
 5. `sudo git checkout develop`
 6. `source install_docker.sh`
  
-#### Установка и запуск Pool на Unix-подобных (Linux) системах с помощью Python в виртуальном окружении
+#### Установка и запуск Приложения на Unix-подобных (Linux) системах с помощью Python в виртуальном окружении
  
 1. `sudo apt-get update`
 2. `sudo apt install git -y`
