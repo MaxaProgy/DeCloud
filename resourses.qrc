@@ -1,0 +1,35 @@
+<RCC>
+    <qresource prefix="">
+        <file>icons/x-circle.svg</file>
+        <file>icons/x-circle(1).svg</file>
+        <file>icons/x.svg</file>
+        <file>icons/x(1).svg</file>
+        <file>icons/user-plus.svg</file>
+        <file>icons/sun.svg</file>
+        <file>icons/sun(1).svg</file>
+        <file>icons/square.svg</file>
+        <file>icons/settings.svg</file>
+        <file>icons/send.svg</file>
+        <file>icons/package.svg</file>
+        <file>icons/minus.svg</file>
+        <file>icons/plus.svg</file>
+        <file>icons/layers.svg</file>
+        <file>icons/info.svg</file>
+        <file>icons/inbox.svg</file>
+        <file>icons/grid.svg</file>
+        <file>icons/copy.svg</file>
+        <file>icons/globe.svg</file>
+        <file>icons/folder-plus.svg</file>
+        <file>icons/file-plus.svg</file>
+        <file>icons/check-square.svg</file>
+        <file>icons/check.svg</file>
+        <file>icons/align-justify.svg</file>
+        <file>icons/server.svg</file>
+        <file>icons/icon-decloud.png</file>
+        <file>static/arrow-000.png</file>
+        <file>static/arrow-180.png</file>
+        <file>static/arrow-circle-315.png</file>
+        <file>static/home.png</file>
+        <file>static/favicon.ico</file>
+    </qresource>
+</RCC>

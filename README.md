@@ -68,7 +68,7 @@ ByteEx
 ![Image alt](static_readme/image_12_readme.jpg)
 
 _____
-[Документация и взаимодействие с проложением](Documentation.pdf)
+[Документация и взаимодействие с проложением](static/Documentation.pdf)
 _____
 #### Установка и запуск Pool на Unix-подобных (Linux) системах с помощью Docker
 
