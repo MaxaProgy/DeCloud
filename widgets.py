@@ -909,6 +909,7 @@ class PoolWidget(QVBoxLayout):
 
 
 class FogNodesWidget(QHBoxLayout):
+    changeNs = pyqtSignal(str, str)  # Сигнал на смену текущего имени
     changeBalanceClientsStorage = pyqtSignal(str, int)  # Сигнал на изменение баланса клиента
     changeBalancePool = pyqtSignal(int)  # Сигнал на изменение баланса пула
 
@@ -1214,13 +1215,43 @@ class FogNodesWidget(QHBoxLayout):
     def _context_menu_open(self, position):
         from PyQt5.QtWidgets import QAction, QMenu
 
+        context_menu = QMenu(self.fogNodesTableWidget)
         if self.fogNodesTableWidget.itemAt(position):
             # Если нажали на ячеку, то добавляем возможность скапировать путь к объекту
-            context_menu = QMenu(self.fogNodesTableWidget)
-            copyFogNodeAction = QAction('Copy address', self)
+            copyFogNodeAction = QAction('Copy address')
             copyFogNodeAction.triggered.connect(self._copy_fog_node_address)
             context_menu.addAction(copyFogNodeAction)
-            context_menu.exec_(self.fogNodesTableWidget.viewport().mapToGlobal(position))
+            """ try:
+                # Запрашиваем все ns клиента
+                address = self.fogNodesTableWidget.item(self.fogNodesTableWidget.currentRow(), 5).text()
+                response = requests.get(
+                    f'http://{DNS_NAME}/api/get_all_ns/{address}').json()
+                if response:  # Если есть хотя бы 1 ns
+                    useNs_menu = QMenu('Use ns')
+
+                    self.ns_actions = []
+                    if self.current_fog_node() != address:  # Если текущее имя не адрес, то добавить адрес к ns
+                        self.ns_actions = [QAction(address)]
+                        self.ns_actions[0].triggered.connect(self.use_ns)
+                        useNs_menu.addAction(self.ns_actions[0])
+                        useNs_menu.addSeparator()
+
+                    for ns in response:
+                        if self.current_fog_node() != ns:  # Если имя не равно текущему, то добавляем
+                            self.ns_actions.append(QAction(ns))
+                            self.ns_actions[-1].triggered.connect(self.use_ns)
+                            useNs_menu.addAction(self.ns_actions[-1])
+                    context_menu.addMenu(useNs_menu)
+            except:
+                pass
+
+        self.ns_actions = None"""
+        context_menu.exec_(self.fogNodesTableWidget.viewport().mapToGlobal(position))
+
+    def use_ns(self):
+        row = self.fogNodesTableWidget.currentRow()
+        self.fogNodesTableWidget.setItem(row, 0, QTableWidgetItem(self.sender().text()))
+        self.changeNs.emit(self.current_fog_node(), self.fogNodesTableWidget.setCurrentCell(row, 5).text())  # Изменяем старое имя на новое
 
     def create_client_storage(self):
         # Создание клиентского хранилища

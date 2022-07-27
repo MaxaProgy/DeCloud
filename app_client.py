@@ -294,6 +294,7 @@ class AppClient(QMainWindow):
                 # Создание вкладки Fog node
                 tabFogNodes = QFrame()
                 self.fogNodesWidget.changeBalanceClientsStorage.connect(self.change_balance_clients_storage)
+                self.fogNodesWidget.changeNs.connect(self.change_ns_client_storage)
                 self.fogNodesWidget.changeBalancePool.connect(self.change_balance_pool)
                 tabFogNodes.setLayout(self.fogNodesWidget)
                 self.ui.tabWidget.addTab(tabFogNodes, "Fog Nodes")
@@ -322,6 +323,7 @@ class AppClient(QMainWindow):
         else:
             tabFogNodes = QFrame()
             self.fogNodesWidget.changeBalanceClientsStorage.connect(self.change_balance_clients_storage)
+            self.fogNodesWidget.changeNs.connect(self.change_ns_client_storage)
             self.fogNodesWidget.changeBalancePool.connect(self.change_balance_pool)
             tabFogNodes.setLayout(self.fogNodesWidget)
             self.ui.tabWidget.insertTab(self.ui.tabWidget.count() - 1, tabFogNodes, "Fog Nodes")
@@ -353,7 +355,7 @@ class AppClient(QMainWindow):
         for i in range(self.fogNodesWidget.fogNodesTableWidget.rowCount()):
             # Если normal_address совпадает с адресом fog node, то эта fog node и есть этот storage,
             # следовательно заменяем отображаемое имя node
-            if self.fogNodesWidget.fogNodesTableWidget.item(i, 4).text() == normal_address:
+            if self.fogNodesWidget.fogNodesTableWidget.item(i, 5).text() == normal_address:
                 # Получаем стили ячейки перед изменением, для их повторного установления
                 color_background = self.fogNodesWidget.fogNodesTableWidget.item(i, 0).background().color().name()
                 if color_background != POOL_BACKGROUND_COLOR:
