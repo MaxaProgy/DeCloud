@@ -36,6 +36,9 @@ Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
+[Dirs]
+Name: "{app}"; Permissions: everyone-full
+
 [Files]
 Source: "C:\IdeaProjects\PYTHON\DeCloud\dist\decloud\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "C:\IdeaProjects\PYTHON\DeCloud\dist\decloud\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs

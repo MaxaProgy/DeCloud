@@ -635,7 +635,7 @@ class PoolWidget(QVBoxLayout):
         self.infoBlockchain.setColumnWidth(0, self.infoBlockchain.width() // 6)
         self.infoBlockchain.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.infoBlockchain.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
-        self.infoBlockchain.setColumnWidth(3, self.infoBlockchain.width() / 4.5)
+        self.infoBlockchain.setColumnWidth(3, self.infoBlockchain.width() // 4)
         self.infoBlockchain.setColumnHidden(4, True)
 
 
